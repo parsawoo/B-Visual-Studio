@@ -1,0 +1,16 @@
+{
+  "name": "visual-studio",
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "deploy": "npm run build && gh-pages -d dist"
+  },
+  "devDependencies": {
+    "gh-pages": "^6.1.1",
+    "vite": "^8.0.3"
+  },
+  "dependencies": {
+    "three": "^0.183.2"
+  }
+}

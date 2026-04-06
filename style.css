@@ -1,0 +1,146 @@
+/* 기본 리셋 */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  /* 🌟 전체 폰트를 스페이스 모노로 적용 */
+  font-family: 'Space Mono', monospace;
+  background-color: #e5e5e5;
+  color: #222222;
+  height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow: hidden;
+  position: relative;
+}
+
+/* 흑백 톤의 은은한 배경 무늬 */
+.bg-shape {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(60px);
+  z-index: 0;
+  animation: drift 15s infinite alternate ease-in-out;
+}
+
+.shape-1 {
+  width: 50vw; height: 50vw;
+  background: #ffffff;
+  top: -10%; left: -10%;
+}
+
+.shape-2 {
+  width: 40vw; height: 40vw;
+  background: #cccccc;
+  bottom: -10%; right: -5%;
+  animation-delay: -5s;
+}
+
+@keyframes drift {
+  0% { transform: translate(0, 0); }
+  100% { transform: translate(50px, -50px); }
+}
+
+/* 글래스모피즘 메인 패널 */
+.glass-panel {
+  position: relative;
+  z-index: 10;
+  width: 100%;
+  max-width: 650px; /* 모노 폰트가 넓어서 너비를 살짝 늘림 */
+  background: rgba(255, 255, 255, 0.4);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-radius: 20px;
+  padding: 4rem 3rem;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.05);
+}
+
+/* 헤더 타이포그래피 */
+.header {
+  text-align: center;
+  margin-bottom: 3.5rem;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+  padding-bottom: 2rem;
+}
+
+.main-title {
+  font-size: 2.5rem;
+  font-weight: 700;
+  letter-spacing: -2px; /* 레트로 폰트 특유의 자간 좁힘 */
+  margin-bottom: 0.8rem;
+}
+
+.subtitle {
+  font-size: 0.8rem;
+  color: #555555;
+  letter-spacing: 0px;
+}
+
+/* 메뉴 리스트 */
+.menu {
+  display: flex;
+  flex-direction: column;
+  gap: 1.2rem;
+}
+
+/* 메뉴 버튼 */
+.menu-item {
+  display: flex;
+  align-items: center;
+  padding: 1.2rem 1.5rem;
+  background: rgba(255, 255, 255, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 12px;
+  text-decoration: none;
+  color: #222222;
+  transition: all 0.4s ease;
+}
+
+.menu-item:hover:not(.locked) {
+  background: rgba(255, 255, 255, 0.8);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.03);
+  transform: translateY(-2px);
+}
+
+.index {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #888888;
+  width: 40px;
+}
+
+.title {
+  font-size: 1.2rem;
+  font-weight: 700;
+  flex-grow: 1;
+}
+
+/* 상태 뱃지 (레트로 박스 형태) */
+.status {
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border: 1px solid currentColor;
+}
+
+.live {
+  background: #222222;
+  color: #ffffff;
+  border-color: #222222;
+}
+
+.menu-item:hover:not(.locked) .live {
+  background: #ffffff;
+  color: #222222;
+}
+
+/* 잠긴 버튼 */
+.locked {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
