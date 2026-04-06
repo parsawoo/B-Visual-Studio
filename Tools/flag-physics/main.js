@@ -1,7 +1,6 @@
-// 🌟 [수정] 깃허브 페이지에서 에러 없이 실행되도록 직접 라이브러리 주소를 넣었습니다.
+// 🌟 깃허브에서 에러 없이 실행되도록 라이브러리 주소를 직접 넣었습니다.
 import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
 
-// 1. 씬 셋업 (preserveDrawingBuffer: true 추가 - 이미지 캡처용)
 const container = document.getElementById('canvas-container');
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -123,7 +122,7 @@ document.getElementById('imageUpload').addEventListener('change', (e) => {
 
 document.getElementById('btnCapture').addEventListener('click', () => {
   renderer.render(scene, camera); 
-  const dataURL = renderer.domElement.toURL('image/png');
+  const dataURL = renderer.domElement.toDataURL('image/png');
   const a = document.createElement('a');
   a.href = dataURL;
   a.download = 'b-visual-flag.png';
