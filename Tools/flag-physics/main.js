@@ -1,10 +1,9 @@
-// 🌟 [수정] 깃허브 페이지스에서 별도 빌드 없이 Three.js를 바로 인식하도록 직접 URL을 임포트합니다.
+// 🌟 [수정] 깃허브 페이지에서 에러 없이 실행되도록 직접 라이브러리 주소를 넣었습니다.
 import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
 
-// 1. 씬 셋업
+// 1. 씬 셋업 (preserveDrawingBuffer: true 추가 - 이미지 캡처용)
 const container = document.getElementById('canvas-container');
 const scene = new THREE.Scene();
-... (나머지 코드 그대로 유지) ...
 const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
 camera.position.set(0, -1, 9); 
 
@@ -13,11 +12,10 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.shadowMap.enabled = true; 
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-// [명도 버그 수정] 색상 공간을 정확하게 교정하여 원본 색상 유지
 renderer.outputColorSpace = THREE.SRGBColorSpace; 
 container.appendChild(renderer.domElement);
 
-const ambientLight = new THREE.AmbientLight(0xffffff, 1.5); // 기본 밝기 상향
+const ambientLight = new THREE.AmbientLight(0xffffff, 1.5);
 scene.add(ambientLight);
 
 const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
@@ -31,7 +29,6 @@ let particles = [];
 let constraints = [];
 let flagMesh = null;
 
-// 비율 계산 및 천 생성
 function createCloth(imgWidth, imgHeight, texture) {
   if (flagMesh) {
     scene.remove(flagMesh);
@@ -66,7 +63,6 @@ function createCloth(imgWidth, imgHeight, texture) {
 
   const getIdx = (x, y) => y * (segX + 1) + x;
 
-  // 1. 기본 장력 (구조)
   for (let y = 0; y <= segY; y++) {
     for (let x = 0; x <= segX; x++) {
       if (x < segX) constraints.push([particles[getIdx(x, y)], particles[getIdx(x + 1, y)], restX]);
@@ -74,7 +70,6 @@ function createCloth(imgWidth, imgHeight, texture) {
     }
   }
 
-  // 2. 대각선 장력 (전단)
   for (let y = 0; y < segY; y++) {
     for (let x = 0; x < segX; x++) {
       const diag = Math.hypot(restX, restY);
@@ -83,7 +78,6 @@ function createCloth(imgWidth, imgHeight, texture) {
     }
   }
 
-  // 3. 🌟 굽힘 저항 (Bending Constraints) - Z축 얽힘(뒤집힘 뚫고나옴) 방지 핵심
   for (let y = 0; y <= segY; y++) {
     for (let x = 0; x <= segX; x++) {
       if (x < segX - 1) constraints.push([particles[getIdx(x, y)], particles[getIdx(x + 2, y)], restX * 2]);
@@ -97,7 +91,6 @@ function createCloth(imgWidth, imgHeight, texture) {
     color: texture ? 0xffffff : 0xcccccc,
     side: THREE.DoubleSide,
     roughness: 0.5,
-    // 🌟 Z축 겹침 깜빡임(Z-fighting) 방지 옵션 추가
     polygonOffset: true,
     polygonOffsetFactor: 1,
     polygonOffsetUnits: 1
@@ -111,28 +104,26 @@ function createCloth(imgWidth, imgHeight, texture) {
 
 createCloth(1, 1, null);
 
-// main.js의 파일 업로드 이벤트를 아래로 교체
 document.getElementById('imageUpload').addEventListener('change', (e) => {
   const file = e.target.files[0];
   if (file) {
-    const url = URL.createObjectURL(file); // 🌟 파일을 브라우저 주소로 즉시 변환
+    const url = URL.createObjectURL(file);
     const loader = new THREE.TextureLoader();
     
     loader.load(url, (tex) => {
       tex.colorSpace = THREE.SRGBColorSpace;
       const img = tex.image;
-      createCloth(img.width, img.height, tex); // 깃발 다시 그리기
-      URL.revokeObjectURL(url); // 메모리 해제
+      createCloth(img.width, img.height, tex);
+      URL.revokeObjectURL(url);
     }, undefined, (err) => {
       console.error("깃발 이미지 로딩 실패:", err);
     });
   }
 });
 
-// 🌟 UI 버튼 기능 (캡처 및 영상 녹화)
 document.getElementById('btnCapture').addEventListener('click', () => {
-  renderer.render(scene, camera); // 현재 프레임 강제 업데이트
-  const dataURL = renderer.domElement.toDataURL('image/png');
+  renderer.render(scene, camera); 
+  const dataURL = renderer.domElement.toURL('image/png');
   const a = document.createElement('a');
   a.href = dataURL;
   a.download = 'b-visual-flag.png';
@@ -146,7 +137,7 @@ const btnRecord = document.getElementById('btnRecord');
 
 btnRecord.addEventListener('click', () => {
   if (!isRecording) {
-    const stream = renderer.domElement.captureStream(60); // 60fps로 캔버스 캡처
+    const stream = renderer.domElement.captureStream(60);
     mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
     mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
     mediaRecorder.onstop = () => {
@@ -171,7 +162,6 @@ btnRecord.addEventListener('click', () => {
   }
 });
 
-// 물리 루프
 const clock = new THREE.Clock();
 const dt = 0.016; 
 const friction = 0.95; 
@@ -180,7 +170,6 @@ function animate() {
   requestAnimationFrame(animate);
   const time = clock.getElapsedTime();
 
-  // 조명 컨트롤 적용
   ambientLight.intensity = parseFloat(document.getElementById('brightness').value);
   dirLight.position.x = parseFloat(document.getElementById('lightX').value);
   dirLight.position.z = parseFloat(document.getElementById('lightZ').value);
@@ -208,7 +197,6 @@ function animate() {
       }
     });
 
-    // 해상도 조절 로직 적용하여 반복
     for (let i = 0; i < 15; i++) {
       constraints.forEach(([p1, p2, dist]) => {
         const diff = p2.position.clone().sub(p1.position);
