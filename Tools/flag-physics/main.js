@@ -181,22 +181,42 @@ function animate() {
   const gravityVec = new THREE.Vector3(0, -gravVal, 0);
   const baseWind = new THREE.Vector3(windX, 0, windZ).multiplyScalar(strength);
 
-  if (flagMesh) {
-    particles.forEach(p => {
+if (flagMesh) {
+    // 1. 입자 물리 적용 (풍압 로직 개선)
+    particles.forEach((p, idx) => {
       if (p.mass > 0) {
         const vel = p.position.clone().sub(p.previous).multiplyScalar(friction);
         p.previous.copy(p.position);
         
-        const turbX = Math.sin(p.position.x * 2.0 + time * 3.0);
-        const turbY = Math.cos(p.position.y * 2.5 + time * 2.5);
-        const turbulence = new THREE.Vector3(turbX, turbY, turbX * turbY).multiplyScalar(strength * 0.5);
+        // 🌟 단순 벡터 합이 아닌, 표면 흔들림(Turbulence) 강화
+        const turbX = Math.sin(p.position.x * 1.5 + time * 3.0);
+        const turbY = Math.cos(p.position.y * 1.5 + time * 2.0);
+        const turbulence = new THREE.Vector3(turbX, turbY, turbX * turbY).multiplyScalar(strength * 0.3);
         
         const force = gravityVec.clone().add(baseWind).add(turbulence);
         p.position.add(vel).add(force.multiplyScalar(dt * dt));
       }
     });
+    
+for (let j = 0; j < particles.length; j += 4) { // 성능을 위해 4칸 간격으로 샘플링
+        for (let k = j + 4; k < particles.length; k += 4) {
+          const p1 = particles[j];
+          const p2 = particles[k];
+          const distVec = p1.position.clone().sub(p2.position);
+          const distSq = distVec.lengthSq();
+          const minDist = 0.15; // 최소 간격 (천의 두께)
+          
+          if (distSq < minDist * minDist) {
+            const dist = Math.sqrt(distSq);
+            const push = distVec.multiplyScalar((minidist - dist) / dist).multiplyScalar(0.5);
+            if (p1.mass > 0) p1.position.add(push);
+            if (p2.mass > 0) p2.position.sub(push);
+          }
+        }
+      }
+    }
 
-    for (let i = 0; i < 15; i++) {
+    for (let i = 0; i < 25; i++) {
       constraints.forEach(([p1, p2, dist]) => {
         const diff = p2.position.clone().sub(p1.position);
         const d = diff.length();
