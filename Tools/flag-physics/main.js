@@ -109,20 +109,20 @@ function createCloth(imgWidth, imgHeight, texture) {
 
 createCloth(1, 1, null);
 
-// main.js의 이미지 업로드 이벤트 부분만 교체
+// main.js의 파일 업로드 이벤트를 아래로 교체
 document.getElementById('imageUpload').addEventListener('change', (e) => {
   const file = e.target.files[0];
   if (file) {
-    const url = URL.createObjectURL(file); // 🌟 업로드한 파일을 즉시 주소로 변환
+    const url = URL.createObjectURL(file); // 🌟 파일을 브라우저 주소로 즉시 변환
     const loader = new THREE.TextureLoader();
     
     loader.load(url, (tex) => {
       tex.colorSpace = THREE.SRGBColorSpace;
       const img = tex.image;
-      createCloth(img.width, img.height, tex); // 깃발 생성
-      URL.revokeObjectURL(url); // 메모리 최적화
+      createCloth(img.width, img.height, tex); // 깃발 다시 그리기
+      URL.revokeObjectURL(url); // 메모리 해제
     }, undefined, (err) => {
-      console.error("이미지 로드 실패:", err);
+      console.error("깃발 이미지 로딩 실패:", err);
     });
   }
 });
