@@ -1,8 +1,10 @@
-import * as THREE from 'three';
+// 🌟 [수정] 깃허브 페이지스에서 별도 빌드 없이 Three.js를 바로 인식하도록 직접 URL을 임포트합니다.
+import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
 
-// 1. 씬 셋업 (preserveDrawingBuffer: true 추가 - 이미지 캡처용)
+// 1. 씬 셋업
 const container = document.getElementById('canvas-container');
 const scene = new THREE.Scene();
+... (나머지 코드 그대로 유지) ...
 const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
 camera.position.set(0, -1, 9); 
 
