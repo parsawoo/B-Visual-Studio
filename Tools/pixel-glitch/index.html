@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pixel Glitch - B-Visual Studio</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect x='1' y='1' width='6' height='6' rx='1' fill='%2322c55e'/><rect x='9' y='1' width='6' height='6' rx='1' fill='%2322c55e'/><rect x='1' y='9' width='6' height='6' rx='1' fill='%2322c55e'/><rect x='9' y='9' width='6' height='6' rx='1' fill='%2322c55e'/></svg>">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    body { margin: 0; overflow: hidden; background: #050505; color: #fff; font-family: 'Space Mono', monospace; }
+    #canvas-container { width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; }
+    canvas { max-width: 90%; max-height: 85%; box-shadow: 0 0 50px rgba(0,0,0,0.5); }
+    .ui-panel { position: absolute; bottom: 2rem; left: 50%; transform: translateX(-50%); background: rgba(20, 20, 20, 0.85); backdrop-filter: blur(10px); padding: 1.5rem; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); display: flex; gap: 1.2rem; align-items: flex-end; z-index: 10; flex-wrap: wrap; justify-content: center; }
+    .control-group { display: flex; flex-direction: column; gap: 0.5rem; }
+    label { font-size: 0.7rem; color: #888; text-transform: uppercase; font-weight: 700; }
+    select, input[type="range"] { background: #111; color: #fff; border: 1px solid #333; padding: 0.4rem; font-family: inherit; border-radius: 4px; }
+    input[type="file"] { width: 180px; font-size: 0.8rem; }
+    
+    /* 🌟 버튼 스타일 (새로운 버튼들 추가) */
+    .btn { background: #fff; color: #000; border: none; padding: 0.6rem 1rem; font-family: inherit; font-weight: 700; cursor: pointer; border-radius: 6px; transition: 0.2s; }
+    .btn:hover { background: #ccc; }
+    .btn.active { background: #22c55e; color: #fff; }
+    
+    /* 파괴적인 카오스 버튼 전용 스타일 */
+    .btn.chaos { background: #a855f7; color: #fff; } 
+    .btn.chaos:hover { background: #9333ea; }
+    
+    .btn.rec { background: #ff4444; color: #fff; animation: pulse 1s infinite; }
+    @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.7; } 100% { opacity: 1; } }
+    .back-btn { position: absolute; top: 2rem; left: 2rem; text-decoration: none; color: #fff; font-weight: 700; z-index: 10; transition: 0.3s; }
+    .back-btn:hover { opacity: 0.5; }
+  </style>
+</head>
+<body>
+  <a href="../../index.html" class="back-btn">&lt;- BACK TO LOBBY</a>
+  <div id="canvas-container"><canvas id="glitchCanvas"></canvas></div>
+  <div class="ui-panel">
+    <div class="control-group"><label>Image</label><input type="file" id="imageInput" accept="image/*"></div>
+    <div class="control-group"><label>Direction</label><select id="dirSelect"><option value="v">Vertical</option><option value="h">Horizontal</option></select></div>
+    <div class="control-group"><label>Threshold</label><input type="range" id="threshold" min="0" max="255" value="100"></div>
+    
+    <button class="btn" id="btnPlay">Start Melting</button>
+    <button class="btn chaos" id="btnChaos">Chaos Melting</button>
+    <button class="btn" id="btnSaveImg">Save JPG</button>
+    <button class="btn" id="btnRecord">Record Video</button>
+  </div>
+  <script type="module" src="./main.js"></script>
+</body>
+</html>
