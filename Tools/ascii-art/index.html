@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ASCII Art - B-Visual Studio</title>
+  
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect x='1' y='1' width='6' height='6' rx='1' fill='%2322c55e'/><rect x='9' y='1' width='6' height='6' rx='1' fill='%2322c55e'/><rect x='1' y='9' width='6' height='6' rx='1' fill='%2322c55e'/><rect x='9' y='9' width='6' height='6' rx='1' fill='%2322c55e'/></svg>">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+  
+  <style>
+    body { margin: 0; overflow: hidden; background-color: #050505; color: #fff; font-family: 'Space Mono', monospace; }
+    #canvas-container { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; display: flex; justify-content: center; align-items: center; z-index: 1; }
+    canvas { max-width: 100%; max-height: 100%; object-fit: contain; }
+    
+    .ui-panel { position: absolute; bottom: 2rem; left: 50%; transform: translateX(-50%); background: rgba(20, 20, 20, 0.85); backdrop-filter: blur(15px); padding: 1.5rem 2.5rem; border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.1); display: flex; flex-wrap: wrap; gap: 1.5rem; justify-content: center; align-items: flex-end; z-index: 10; min-width: 800px; }
+    .control-group { display: flex; flex-direction: column; gap: 0.4rem; }
+    label { font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #aaa; }
+    
+    input[type="file"] { font-family: inherit; font-size: 0.8rem; color: #fff; width: 180px; }
+    input[type="range"] { cursor: pointer; width: 100px; }
+    select { background: #222; color: #fff; border: 1px solid #444; padding: 0.4rem; font-family: inherit; font-size: 0.8rem; border-radius: 4px; }
+    
+    .btn { background: #fff; color: #000; border: none; padding: 0.6rem 1.2rem; font-family: inherit; font-size: 0.8rem; font-weight: 700; border-radius: 6px; cursor: pointer; transition: background 0.3s; }
+    .btn:hover { background: #ccc; }
+    .btn.active { background: #22c55e; color: #fff; }
+    .btn.recording { background: #ef4444; color: #fff; animation: pulse 1.5s infinite; }
+    
+    @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.6; } 100% { opacity: 1; } }
+    .back-btn { position: absolute; top: 2rem; left: 2rem; text-decoration: none; color: #fff; font-weight: 700; font-size: 1rem; z-index: 10; transition: opacity 0.3s; }
+    .back-btn:hover { opacity: 0.5; }
+  </style>
+</head>
+<body>
+  <a href="../../index.html" class="back-btn">&lt;- BACK TO LOBBY</a>
+  
+  <div id="canvas-container">
+    <canvas id="asciiCanvas"></canvas>
+  </div>
+  
+  <div class="ui-panel">
+    <div class="control-group"><label>1. Image</label><input type="file" id="imageUpload" accept="image/*" /></div>
+    <div class="control-group"><label>2. Mode</label>
+      <select id="colorMode"><option value="color">Color</option><option value="bw">B&W</option></select>
+    </div>
+    <div class="control-group"><label>Resolution</label><input type="range" id="resSlider" min="4" max="20" step="1" value="8"></div>
+    
+    <button class="btn" id="btnAnimate">Play Animation</button>
+    <button class="btn" id="btnCopy">Copy Text</button>
+    <button class="btn" id="btnSaveImg">Save JPG</button>
+    <button class="btn" id="btnSaveVid">Record Video</button>
+  </div>
+
+  <script type="module" src="./main.js"></script>
+</body>
+</html>
