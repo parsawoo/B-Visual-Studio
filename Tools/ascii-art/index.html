@@ -8,29 +8,37 @@
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect x='1' y='1' width='6' height='6' rx='1' fill='%2322c55e'/><rect x='9' y='1' width='6' height='6' rx='1' fill='%2322c55e'/><rect x='1' y='9' width='6' height='6' rx='1' fill='%2322c55e'/><rect x='9' y='9' width='6' height='6' rx='1' fill='%2322c55e'/></svg>">
   <link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
   
- <style>
-    body { margin: 0; overflow: hidden; background-color: #ffffff; color: #111; font-family: 'Space Mono', monospace; }
+  <style>
+    /* 기본 테마: 다크 모드 (JS에서 White 모드로 자동 전환됨) */
+    body { margin: 0; overflow: hidden; background-color: #050505; color: #fff; font-family: 'Space Mono', monospace; transition: background-color 0.3s, color 0.3s; }
     #canvas-container { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; display: flex; justify-content: center; align-items: center; z-index: 1; }
     canvas { max-width: 100%; max-height: 100%; object-fit: contain; }
     
-    /* 패널을 밝은 반투명으로 변경 */
-    .ui-panel { position: absolute; bottom: 2rem; left: 50%; transform: translateX(-50%); background: rgba(255, 255, 255, 0.85); backdrop-filter: blur(15px); padding: 1.5rem 2.5rem; border-radius: 12px; border: 1px solid rgba(0, 0, 0, 0.1); display: flex; flex-wrap: wrap; gap: 1.5rem; justify-content: center; align-items: flex-end; z-index: 10; min-width: 800px; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.08); }
+    .ui-panel { position: absolute; bottom: 2rem; left: 50%; transform: translateX(-50%); background: rgba(20, 20, 20, 0.85); backdrop-filter: blur(15px); padding: 1.5rem 2.5rem; border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.1); display: flex; flex-wrap: wrap; gap: 1.5rem; justify-content: center; align-items: flex-end; z-index: 10; min-width: 800px; transition: all 0.3s; }
     .control-group { display: flex; flex-direction: column; gap: 0.4rem; }
-    label { font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #555; }
+    label { font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #aaa; transition: color 0.3s; }
     
-    input[type="file"] { font-family: inherit; font-size: 0.8rem; color: #111; width: 180px; }
+    input[type="file"] { font-family: inherit; font-size: 0.8rem; color: inherit; width: 180px; }
     input[type="range"] { cursor: pointer; width: 100px; }
-    select { background: #fff; color: #111; border: 1px solid #ccc; padding: 0.4rem; font-family: inherit; font-size: 0.8rem; border-radius: 4px; }
+    select { background: #222; color: #fff; border: 1px solid #444; padding: 0.4rem; font-family: inherit; font-size: 0.8rem; border-radius: 4px; transition: all 0.3s; }
     
-    /* 버튼 스타일 반전 */
-    .btn { background: #111; color: #fff; border: none; padding: 0.6rem 1.2rem; font-family: inherit; font-size: 0.8rem; font-weight: 700; border-radius: 6px; cursor: pointer; transition: background 0.3s; }
-    .btn:hover { background: #444; }
+    .btn { background: #fff; color: #000; border: none; padding: 0.6rem 1.2rem; font-family: inherit; font-size: 0.8rem; font-weight: 700; border-radius: 6px; cursor: pointer; transition: background 0.3s, color 0.3s; }
+    .btn:hover { background: #ccc; }
     .btn.active { background: #22c55e; color: #fff; }
     .btn.recording { background: #ef4444; color: #fff; animation: pulse 1.5s infinite; }
     
     @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.6; } 100% { opacity: 1; } }
-    .back-btn { position: absolute; top: 2rem; left: 2rem; text-decoration: none; color: #111; font-weight: 700; font-size: 1rem; z-index: 10; transition: opacity 0.3s; }
+    .back-btn { position: absolute; top: 2rem; left: 2rem; text-decoration: none; color: inherit; font-weight: 700; font-size: 1rem; z-index: 10; transition: opacity 0.3s; }
     .back-btn:hover { opacity: 0.5; }
+
+    /* 🌟 추가된 라이트 모드(화이트 배경) 테마 클래스 */
+    body.light-mode { background-color: #ffffff; color: #111; }
+    body.light-mode .ui-panel { background: rgba(255, 255, 255, 0.85); border: 1px solid rgba(0, 0, 0, 0.1); box-shadow: 0 10px 40px rgba(0, 0, 0, 0.08); }
+    body.light-mode label { color: #555; }
+    body.light-mode select { background: #fff; color: #111; border: 1px solid #ccc; }
+    body.light-mode .btn { background: #111; color: #fff; }
+    body.light-mode .btn:hover { background: #444; }
+    body.light-mode .btn.active { background: #22c55e; color: #fff; }
   </style>
 </head>
 <body>
@@ -40,11 +48,20 @@
     <canvas id="asciiCanvas"></canvas>
   </div>
   
-  <div class="ui-panel">
+  <div class="ui-panel" id="uiPanel">
     <div class="control-group"><label>1. Image</label><input type="file" id="imageUpload" accept="image/*" /></div>
+    
     <div class="control-group"><label>2. Mode</label>
       <select id="colorMode"><option value="color">Color</option><option value="bw">B&W</option></select>
     </div>
+    
+    <div class="control-group"><label>3. Background</label>
+      <select id="bgMode">
+        <option value="white" selected>White</option>
+        <option value="black">Black</option>
+      </select>
+    </div>
+
     <div class="control-group"><label>Resolution</label><input type="range" id="resSlider" min="4" max="20" step="1" value="8"></div>
     
     <button class="btn" id="btnAnimate">Play Animation</button>

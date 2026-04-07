@@ -3,6 +3,7 @@ const ctx = canvas.getContext('2d', { willReadFrequently: true });
 const imageUpload = document.getElementById('imageUpload');
 const resSlider = document.getElementById('resSlider');
 const colorModeSelect = document.getElementById('colorMode');
+const bgModeSelect = document.getElementById('bgMode'); // 🌟 배경 선택기 연동
 
 const btnAnimate = document.getElementById('btnAnimate');
 const btnCopy = document.getElementById('btnCopy');
@@ -15,9 +16,23 @@ let currentImage = null;
 let currentImageData = null;
 let isAnimated = false;
 let animationId = null;
-let rawAsciiText = ""; // 복사용 텍스트 저장소
+let rawAsciiText = "";
 
-// 1. 이미지 로드 및 픽셀 데이터 캐싱 (최적화의 핵심)
+// 🌟 시작할 때 초기 테마(화이트) 렌더링
+updateTheme();
+
+function updateTheme() {
+  const isWhiteBG = bgModeSelect.value === 'white';
+  if (isWhiteBG) {
+    document.body.classList.add('light-mode');
+  } else {
+    document.body.classList.remove('light-mode');
+  }
+  if (!isAnimated) renderASCII();
+}
+
+bgModeSelect.addEventListener('change', updateTheme);
+
 function processImage() {
   if (!currentImage) return;
   const resolution = parseInt(resSlider.value);
@@ -39,21 +54,25 @@ function processImage() {
   if (!isAnimated) renderASCII();
 }
 
-// 2. 렌더링 엔진 (애니메이션 지원)
 function renderASCII() {
   if (!currentImageData) return;
   
   const resolution = parseInt(resSlider.value);
   const data = currentImageData.data;
   const isColor = colorModeSelect.value === 'color';
+  const isWhiteBG = bgModeSelect.value === 'white';
   
-  ctx.fillStyle = '#ffffff';
+  // 배경색 칠하기
+  ctx.fillStyle = isWhiteBG ? '#ffffff' : '#050505';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
+  
+  // 🌟 [1단계] 붓(Font) 설정은 반복문 바깥에서 딱 한 번만!
+  // 이렇게 해야 컴퓨터가 매 픽셀마다 붓을 새로 고르느라 멈추지 않습니다.
   ctx.font = `${resolution}px 'Space Mono', monospace`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
 
-  rawAsciiText = ""; // 텍스트 초기화
+  rawAsciiText = "";
 
   for (let y = 0; y < canvas.height; y += resolution) {
     for (let x = 0; x < canvas.width; x += resolution) {
@@ -63,9 +82,14 @@ function renderASCII() {
       const b = data[index + 2];
       
       const brightness = (r * 0.299 + g * 0.587 + b * 0.114);
-      let charIndex = Math.floor((brightness / 255) * (density.length - 1));
       
-      // 🌟 애니메이션 모드일 때 글자 인덱스를 랜덤하게 흔들어줌 (글리치 효과)
+      let charIndex;
+      if (isWhiteBG) {
+        charIndex = Math.floor(((255 - brightness) / 255) * (density.length - 1));
+      } else {
+        charIndex = Math.floor((brightness / 255) * (density.length - 1));
+      }
+      
       if (isAnimated) {
         charIndex = Math.max(0, Math.min(density.length - 1, charIndex + Math.floor(Math.random() * 5) - 2));
       }
@@ -73,10 +97,22 @@ function renderASCII() {
       const char = density[charIndex] || " ";
       rawAsciiText += char;
       
-      ctx.fillStyle = isColor ? `rgb(${r}, ${g}, ${b})` : `rgb(${brightness}, ${brightness}, ${brightness})`;
-      ctx.fillText(char, x + resolution/2, y + resolution/2);
+      // 🌟 [2단계] 크기 대신 '위치'를 미세하게 흔들기 (포지셔널 글리치)
+      // 해상도의 40% 반경 내에서 무작위로 위치가 어긋나게 계산합니다.
+      const jitterAmount = resolution * 0.4;
+      const offsetX = (Math.random() - 0.5) * jitterAmount;
+      const offsetY = (Math.random() - 0.5) * jitterAmount;
+      
+      if (isColor) {
+        ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+      } else {
+        ctx.fillStyle = `rgb(${brightness}, ${brightness}, ${brightness})`;
+      }
+      
+      // 🌟 계산된 흔들림(offsetX, offsetY)을 더해서 글자를 캔버스에 찍습니다.
+      ctx.fillText(char, x + resolution/2 + offsetX, y + resolution/2 + offsetY);
     }
-    rawAsciiText += '\n'; // 줄바꿈
+    rawAsciiText += '\n';
   }
 
   if (isAnimated) {
@@ -84,7 +120,6 @@ function renderASCII() {
   }
 }
 
-// 3. UI 컨트롤 이벤트
 imageUpload.addEventListener('change', (e) => {
   const file = e.target.files[0];
   if (file) {
@@ -111,11 +146,10 @@ btnAnimate.addEventListener('click', () => {
     btnAnimate.innerText = 'Play Animation';
     btnAnimate.classList.remove('active');
     cancelAnimationFrame(animationId);
-    renderASCII(); // 멈춘 상태로 재렌더링
+    renderASCII();
   }
 });
 
-// 4. 추출 기능들 (복사, 이미지, 영상)
 btnCopy.addEventListener('click', () => {
   if (!rawAsciiText) return alert("이미지를 먼저 업로드해주세요.");
   navigator.clipboard.writeText(rawAsciiText).then(() => {
@@ -127,7 +161,6 @@ btnCopy.addEventListener('click', () => {
 
 btnSaveImg.addEventListener('click', () => {
   if (!currentImage) return;
-  // 텍스트 기반이라 PNG보다 JPG가 더 깔끔할 때가 많습니다.
   const a = document.createElement('a');
   a.href = canvas.toDataURL('image/jpeg', 0.9);
   a.download = 'b-visual-ascii.jpg';
@@ -158,7 +191,6 @@ btnRecord.addEventListener('click', () => {
     mediaRecorder.start();
     isRecording = true;
     
-    // 녹화 중일 땐 강제로 애니메이션 켜기
     if (!isAnimated) btnAnimate.click(); 
     
     btnRecord.innerText = 'Stop & Save Video';
