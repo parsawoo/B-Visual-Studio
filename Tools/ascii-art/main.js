@@ -47,7 +47,7 @@ function renderASCII() {
   const data = currentImageData.data;
   const isColor = colorModeSelect.value === 'color';
   
-  ctx.fillStyle = '#050505';
+  ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.font = `${resolution}px 'Space Mono', monospace`;
   ctx.textAlign = 'center';
