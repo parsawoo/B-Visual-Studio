@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Pro AI Tracker - B-Visual Studio</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect x='1' y='1' width='6' height='6' rx='1' fill='%2322c55e'/><rect x='9' y='1' width='6' height='6' rx='1' fill='%2322c55e'/><rect x='1' y='9' width='6' height='6' rx='1' fill='%2322c55e'/><rect x='9' y='9' width='6' height='6' rx='1' fill='%2322c55e'/></svg>">
   <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
   
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js" crossorigin="anonymous"></script>
@@ -106,10 +107,11 @@
         </select>
       </div>
       
+      <div class="control-group"><label>Effect Int</label><input type="range" id="uiIntensity" min="0.1" max="2.0" step="0.1" value="1.0"></div>
       <div class="control-group"><label>Max Objects</label><input type="range" id="uiObjects" min="5" max="50" step="1" value="20"></div>
-      <div class="control-group"><label>AI Sensitivity</label><input type="range" id="uiSensitivity" min="0.01" max="0.5" step="0.01" value="0.4" title="낮을수록 쓰레기 데이터까지 다 잡아냄"></div>
-      
+      <div class="control-group"><label>AI Sensitivity</label><input type="range" id="uiSensitivity" min="0.01" max="0.5" step="0.01" value="0.1"></div>
       <div class="control-group"><label>Face Nodes</label><input type="range" id="uiNodes" min="5" max="40" step="1" value="15"></div>
+      
       <div class="control-group">
         <label>Line Style</label>
         <select id="uiLineStyle">

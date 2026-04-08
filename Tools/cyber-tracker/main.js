@@ -8,6 +8,8 @@ const hudCtx = hudCanvas.getContext('2d');
 const imageUpload = document.getElementById('imageUpload');
 const uiBoxStyle = document.getElementById('uiBoxStyle');
 const uiEffect = document.getElementById('uiEffect');
+// 🌟 치명적 에러 원인이었던 누락 변수 선언 추가 완료
+const uiIntensity = document.getElementById('uiIntensity'); 
 const uiObjects = document.getElementById('uiObjects'); 
 const uiSensitivity = document.getElementById('uiSensitivity'); 
 const uiNodes = document.getElementById('uiNodes');
@@ -54,9 +56,10 @@ async function initDualAI() {
         holisticModel.setOptions({ modelComplexity: 1, smoothLandmarks: true });
         holisticModel.onResults((results) => { if(holisticResolve) { holisticResolve(results); holisticResolve = null; } });
         await holisticModel.initialize();
-        mainLoader.style.display = 'none';
+        if(mainLoader) mainLoader.style.display = 'none';
     } catch(err) {
-        alert("AI 엔진 로딩 실패. 페이지를 새로고침 해주세요.");
+        console.error(err);
+        alert("AI 엔진 로딩에 실패했습니다. 새로고침 해주세요.");
     }
 }
 initDualAI();
@@ -103,151 +106,167 @@ function initGL() {
 }
 initGL();
 
-imageUpload.onchange = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    videoElement.src = URL.createObjectURL(file);
-    videoElement.loop = false; videoElement.muted = true; videoElement.playsInline = true;
+if(imageUpload) {
+    imageUpload.onchange = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        videoElement.src = URL.createObjectURL(file);
+        videoElement.loop = false; videoElement.muted = true; videoElement.playsInline = true;
 
-    videoElement.onloadeddata = () => {
-        // 🌟 핵심 버그 수정: VideoTexture 대신 일반 Texture를 사용하여 일시정지 상태에서도 강제로 화면에 렌더링되게 함
-        sourceTex = new THREE.Texture(videoElement);
-        sourceTex.minFilter = THREE.LinearFilter;
-        sourceTex.magFilter = THREE.LinearFilter;
-        material.uniforms.tDiffuse.value = sourceTex;
+        videoElement.onloadeddata = () => {
+            sourceTex = new THREE.VideoTexture(videoElement);
+            sourceTex.minFilter = THREE.LinearFilter;
+            sourceTex.magFilter = THREE.LinearFilter;
+            material.uniforms.tDiffuse.value = sourceTex;
 
-        const aspect = videoElement.videoWidth / videoElement.videoHeight;
-        const panelBox = document.getElementById('renderArea').getBoundingClientRect();
-        
-        let w = panelBox.width; let h = panelBox.height;
-        if(w/h > aspect) w = h * aspect; else h = w / aspect;
-        w = Math.floor(w); h = Math.floor(h);
+            const aspect = videoElement.videoWidth / videoElement.videoHeight;
+            const panelBox = document.getElementById('renderArea').getBoundingClientRect();
+            
+            let w = panelBox.width; let h = panelBox.height;
+            if(w/h > aspect) w = h * aspect; else h = w / aspect;
+            w = Math.floor(w); h = Math.floor(h);
 
-        renderer.setSize(w, h);
-        webglCanvas.style.width = w + 'px'; webglCanvas.style.height = h + 'px';
-        hudCanvas.width = w; hudCanvas.height = h;
-        hudCanvas.style.width = w + 'px'; hudCanvas.style.height = h + 'px';
-        mergeCanvas.width = w; mergeCanvas.height = h;
-        
-        resetSystem();
-        btnAnalyze.disabled = false;
-        statusText.innerHTML = "옵션을 설정한 뒤<br>[1. Analyze Track]을 누르세요.";
+            renderer.setSize(w, h);
+            webglCanvas.style.width = w + 'px'; webglCanvas.style.height = h + 'px';
+            hudCanvas.width = w; hudCanvas.height = h;
+            hudCanvas.style.width = w + 'px'; hudCanvas.style.height = h + 'px';
+            mergeCanvas.width = w; mergeCanvas.height = h;
+            
+            resetSystem();
+            if(btnAnalyze) btnAnalyze.disabled = false;
+            if(statusText) statusText.innerHTML = "옵션을 설정한 뒤<br>[1. Analyze Track]을 누르세요.";
+
+            videoElement.play().then(() => {
+                videoElement.pause();
+                videoElement.currentTime = 0.01;
+            }).catch(err => console.log(err));
+        };
     };
-};
+}
 
 function resetSystem() {
     isPlaying = false; isAnalyzing = false;
-    if (isRecording) btnRecord.click();
+    if (isRecording && btnRecord) btnRecord.click();
     trackingData = [];
-    videoElement.pause(); videoElement.currentTime = 0.01; // 첫 프레임 보장
-    btnPlay.disabled = true; btnPlay.classList.remove('playing'); btnPlay.innerText = "2. Play Result";
-    btnAnalyze.disabled = false; btnAnalyze.innerText = "1. Analyze Track";
-    statusOverlay.style.display = 'flex'; progressContainer.style.display = 'none';
+    if(videoElement) { videoElement.pause(); videoElement.currentTime = 0.01; }
+    if(btnPlay) { btnPlay.disabled = true; btnPlay.classList.remove('playing'); btnPlay.innerText = "2. Play Result"; }
+    if(btnAnalyze) { btnAnalyze.disabled = false; btnAnalyze.innerText = "1. Analyze Track"; }
+    if(statusOverlay) statusOverlay.style.display = 'flex'; 
+    if(progressContainer) progressContainer.style.display = 'none';
     hudCtx.clearRect(0,0,hudCanvas.width,hudCanvas.height);
 }
-btnReset.onclick = resetSystem;
+if(btnReset) btnReset.onclick = resetSystem;
 
-btnAnalyze.onclick = async () => {
-    if(!videoElement || trackingData.length > 0) return;
-    
-    const maxObjs = parseInt(uiObjects.value);
-    const minScore = parseFloat(uiSensitivity.value); 
-    
-    isAnalyzing = true; btnAnalyze.disabled = true; btnAnalyze.innerText = "Analyzing...";
-    statusText.innerText = "AI가 픽셀을 강제로 쥐어짜내는 중입니다...\n(브라우저를 그대로 두세요)";
-    progressContainer.style.display = 'block';
-    
-    const processFps = 15; 
-    const totalFrames = Math.floor(videoElement.duration * processFps);
-    
-    for (let i = 0; i <= totalFrames; i++) {
-        if(!isAnalyzing) break;
-        const targetTime = i / processFps;
-        videoElement.currentTime = targetTime;
+if(btnAnalyze) {
+    btnAnalyze.onclick = async () => {
+        if(!videoElement || trackingData.length > 0) return;
         
-        await new Promise(r => {
-            const handler = () => { videoElement.removeEventListener('seeked', handler); r(); };
-            videoElement.addEventListener('seeked', handler);
-            setTimeout(r, 200); 
-        });
-
-        const objects = await objectModel.detect(videoElement, maxObjs, minScore);
-        let parsedObjs = objects.map(o => ({
-            class: o.class, conf: o.score,
-            x: o.bbox[0]/videoElement.videoWidth, y: o.bbox[1]/videoElement.videoHeight,
-            w: o.bbox[2]/videoElement.videoWidth, h: o.bbox[3]/videoElement.videoHeight
-        }));
-
-        const holisticRes = await new Promise(res => { holisticResolve = res; holisticModel.send({image: videoElement}); });
-        let parsedFaces = [];
+        const maxObjs = uiObjects ? parseInt(uiObjects.value) : 20;
+        const minScore = uiSensitivity ? parseFloat(uiSensitivity.value) : 0.1; 
         
-        if(holisticRes && holisticRes.faceLandmarks) {
-            const face = holisticRes.faceLandmarks;
-            const features = {
-                'EYE_L': [33, 133, 160, 159, 158, 144], 'EYE_R': [362, 263, 387, 386, 385, 373],
-                'NOSE': [1, 2, 98, 327, 168], 'MOUTH': [61, 291, 39, 181, 0, 17]
-            };
+        isAnalyzing = true; btnAnalyze.disabled = true; btnAnalyze.innerText = "Analyzing...";
+        if(statusText) statusText.innerText = "AI가 픽셀을 분석하는 중입니다...\n(화면을 그대로 두세요)";
+        if(progressContainer) progressContainer.style.display = 'block';
+        
+        const processFps = 15; 
+        const totalFrames = Math.floor(videoElement.duration * processFps);
+        
+        for (let i = 0; i <= totalFrames; i++) {
+            if(!isAnalyzing) break;
+            const targetTime = i / processFps;
+            videoElement.currentTime = targetTime;
+            
+            await new Promise(r => {
+                const handler = () => { videoElement.removeEventListener('seeked', handler); r(); };
+                videoElement.addEventListener('seeked', handler);
+                setTimeout(r, 200); 
+            });
 
-            for (let [name, indices] of Object.entries(features)) {
-                let minX = 1, minY = 1, maxX = 0, maxY = 0;
-                let valid = false;
-                indices.forEach(idx => {
-                    if (face[idx]) { valid = true; minX = Math.min(minX, face[idx].x); minY = Math.min(minY, face[idx].y); maxX = Math.max(maxX, face[idx].x); maxY = Math.max(maxY, face[idx].y); }
-                });
-                if (valid) {
-                    let w = (maxX - minX) * 1.5; let h = (maxY - minY) * 1.5;
-                    w = Math.max(w, 0.03); h = Math.max(h, 0.03);
-                    parsedFaces.push({ class: name, conf: 1.0, x: (minX+maxX)/2 - w/2, y: (minY+maxY)/2 - h/2, w: w, h: h });
+            const objects = await objectModel.detect(videoElement, maxObjs, minScore);
+            let parsedObjs = objects.map(o => ({
+                class: o.class, conf: o.score,
+                x: o.bbox[0]/videoElement.videoWidth, y: o.bbox[1]/videoElement.videoHeight,
+                w: o.bbox[2]/videoElement.videoWidth, h: o.bbox[3]/videoElement.videoHeight
+            }));
+
+            const holisticRes = await new Promise(res => { holisticResolve = res; holisticModel.send({image: videoElement}); });
+            let parsedFaces = [];
+            
+            if(holisticRes && holisticRes.faceLandmarks) {
+                const face = holisticRes.faceLandmarks;
+                const features = {
+                    'EYE_L': [33, 133, 160, 159, 158, 144], 'EYE_R': [362, 263, 387, 386, 385, 373],
+                    'NOSE': [1, 2, 98, 327, 168], 'MOUTH': [61, 291, 39, 181, 0, 17]
+                };
+
+                for (let [name, indices] of Object.entries(features)) {
+                    let minX = 1, minY = 1, maxX = 0, maxY = 0;
+                    let valid = false;
+                    indices.forEach(idx => {
+                        if (face[idx]) { valid = true; minX = Math.min(minX, face[idx].x); minY = Math.min(minY, face[idx].y); maxX = Math.max(maxX, face[idx].x); maxY = Math.max(maxY, face[idx].y); }
+                    });
+                    if (valid) {
+                        let w = (maxX - minX) * 1.5; let h = (maxY - minY) * 1.5;
+                        w = Math.max(w, 0.03); h = Math.max(h, 0.03);
+                        parsedFaces.push({ class: name, conf: 1.0, x: (minX+maxX)/2 - w/2, y: (minY+maxY)/2 - h/2, w: w, h: h });
+                    }
                 }
             }
+
+            trackingData.push({ time: targetTime, boxes: [...parsedObjs, ...parsedFaces] });
+            if(progressBar) progressBar.style.width = `${(i/totalFrames)*100}%`;
         }
 
-        trackingData.push({ time: targetTime, boxes: [...parsedObjs, ...parsedFaces] });
-        progressBar.style.width = `${(i/totalFrames)*100}%`;
-    }
+        isAnalyzing = false; videoElement.currentTime = 0.01;
+        if(statusOverlay) statusOverlay.style.display = 'none';
+        btnAnalyze.innerText = "Analysis Done";
+        if(btnPlay) btnPlay.disabled = false;
+    };
+}
 
-    isAnalyzing = false; videoElement.currentTime = 0;
-    statusOverlay.style.display = 'none';
-    btnAnalyze.innerText = "Analysis Done";
-    btnPlay.disabled = false;
-};
+if(videoElement) {
+    videoElement.onended = () => {
+        isPlaying = false; 
+        if(btnPlay) { btnPlay.classList.remove('playing'); btnPlay.innerText = "Replay"; }
+        if (isRecording && btnRecord) btnRecord.click(); 
+    };
+}
 
-videoElement.onended = () => {
-    isPlaying = false; btnPlay.classList.remove('playing'); btnPlay.innerText = "Replay";
-    if (isRecording) btnRecord.click(); 
-};
+if(btnPlay) {
+    btnPlay.onclick = () => {
+        if(trackingData.length === 0) return;
+        if(isPlaying) {
+            videoElement.pause(); isPlaying = false;
+            btnPlay.classList.remove('playing'); btnPlay.innerText = "Resume";
+        } else {
+            if(videoElement.currentTime >= videoElement.duration - 0.1) videoElement.currentTime = 0;
+            videoElement.play(); isPlaying = true;
+            btnPlay.classList.add('playing'); btnPlay.innerText = "Pause";
+        }
+    };
+}
 
-btnPlay.onclick = () => {
-    if(trackingData.length === 0) return;
-    if(isPlaying) {
-        videoElement.pause(); isPlaying = false;
-        btnPlay.classList.remove('playing'); btnPlay.innerText = "Resume";
-    } else {
-        if(videoElement.currentTime >= videoElement.duration - 0.1) videoElement.currentTime = 0;
-        videoElement.play(); isPlaying = true;
-        btnPlay.classList.add('playing'); btnPlay.innerText = "Pause";
-    }
-};
-
-btnRecord.onclick = () => {
-    if (trackingData.length === 0) return alert("분석(Analyze) 완료 후 녹화할 수 있습니다.");
-    if (isRecording) {
-        mediaRecorder.stop(); isRecording = false;
-        btnRecord.classList.remove('recording'); btnRecord.innerText = "Export .WebM";
-    } else {
-        recordedChunks = []; videoElement.currentTime = 0;
-        if (!isPlaying) btnPlay.click();
-        const stream = mergeCanvas.captureStream(30);
-        mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
-        mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
-        mediaRecorder.onstop = () => {
-            const blob = new Blob(recordedChunks, { type: 'video/webm' }); const url = URL.createObjectURL(blob);
-            const a = document.createElement('a'); a.href = url; a.download = 'CyberTracker_Export.webm'; a.click(); URL.revokeObjectURL(url);
-        };
-        mediaRecorder.start(); isRecording = true;
-        btnRecord.classList.add('recording'); btnRecord.innerText = "Recording...";
-    }
-};
+if(btnRecord) {
+    btnRecord.onclick = () => {
+        if (trackingData.length === 0) return alert("분석(Analyze) 완료 후 녹화할 수 있습니다.");
+        if (isRecording) {
+            mediaRecorder.stop(); isRecording = false;
+            btnRecord.classList.remove('recording'); btnRecord.innerText = "Export .WebM";
+        } else {
+            recordedChunks = []; videoElement.currentTime = 0;
+            if (!isPlaying && btnPlay) btnPlay.click();
+            const stream = mergeCanvas.captureStream(30);
+            mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+            mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
+            mediaRecorder.onstop = () => {
+                const blob = new Blob(recordedChunks, { type: 'video/webm' }); const url = URL.createObjectURL(blob);
+                const a = document.createElement('a'); a.href = url; a.download = 'CyberTracker_Export.webm'; a.click(); URL.revokeObjectURL(url);
+            };
+            mediaRecorder.start(); isRecording = true;
+            btnRecord.classList.add('recording'); btnRecord.innerText = "Recording...";
+        }
+    };
+}
 
 function drawHUD() {
     hudCtx.clearRect(0,0,hudCanvas.width,hudCanvas.height);
@@ -257,8 +276,8 @@ function drawHUD() {
     const ct = videoElement.currentTime;
     let currentFrame = trackingData.reduce((prev, curr) => Math.abs(curr.time - ct) < Math.abs(prev.time - ct) ? curr : prev);
 
-    const maxRenderObjs = parseInt(uiObjects.value);
-    const maxRenderNodes = parseInt(uiNodes.value);
+    const maxRenderObjs = uiObjects ? parseInt(uiObjects.value) : 20;
+    const maxRenderNodes = uiNodes ? parseInt(uiNodes.value) : 15;
 
     let activeBoxCount = 0;
     currentFrame.boxes.forEach((o, i) => {
@@ -274,7 +293,11 @@ function drawHUD() {
     });
     for(let i=currentFrame.boxes.length; i<TOTAL_BOXES; i++) renderBoxes[i].active = false;
 
-    const color = uiColor.value; const boxStyle = uiBoxStyle.value; const lineStyle = uiLineStyle.value;
+    const color = uiColor ? uiColor.value : '#00ffcc'; 
+    const boxStyle = uiBoxStyle ? uiBoxStyle.value : 'label'; 
+    const lineStyle = uiLineStyle ? uiLineStyle.value : 'curved';
+    const lineDens = uiLineDensity ? parseFloat(uiLineDensity.value) : 0.3;
+
     hudCtx.strokeStyle = color; hudCtx.lineWidth = 1.0; hudCtx.font = "9px 'Space Mono', monospace";
     hudCtx.shadowBlur = boxStyle === 'glow' ? 15 : 0; hudCtx.shadowColor = color;
 
@@ -292,7 +315,6 @@ function drawHUD() {
             const len = Math.min(cw, ch) * 0.2;
             hudCtx.moveTo(cx, cy + len); hudCtx.lineTo(cx, cy); hudCtx.lineTo(cx + len, cy);
             hudCtx.moveTo(cx + cw, cy + len); hudCtx.lineTo(cx + cw, cy); 
-            // 🌟 치명적인 오타였던 곳 완벽 수정
             hudCtx.lineTo(cx + cw - len, cy);
             hudCtx.moveTo(cx, cy + ch - len); hudCtx.lineTo(cx, cy + ch); hudCtx.lineTo(cx + len, cy + ch);
             hudCtx.moveTo(cx + cw, cy + ch - len); hudCtx.lineTo(cx + cw, cy + ch); hudCtx.lineTo(cx + cw - len, cy + ch);
@@ -307,7 +329,7 @@ function drawHUD() {
     });
 
     hudCtx.globalAlpha = 0.4; hudCtx.shadowBlur = 0; 
-    const connectDist = hudCanvas.width * parseFloat(uiLineDensity.value);
+    const connectDist = hudCanvas.width * lineDens;
 
     if (lineStyle === 'dashed') hudCtx.setLineDash([3, 5]);
     else hudCtx.setLineDash([]);
@@ -335,17 +357,17 @@ function drawHUD() {
 function animate(time) {
     requestAnimationFrame(animate);
     
-    // 🌟 핵심 버그 수정: 일시정지 상태에서도 텍스처를 강제 업데이트하여 검은 화면 방지
-    if (sourceTex && videoElement.readyState >= 2) {
+    if (sourceTex && videoElement && videoElement.readyState >= 2) {
         sourceTex.needsUpdate = true;
     }
 
-    const currentInt = parseFloat(document.getElementById('uiIntensity').value) || 1.0;
+    const currentInt = uiIntensity ? (parseFloat(uiIntensity.value) || 1.0) : 1.0;
+    const currentEff = uiEffect ? (parseInt(uiEffect.value) || 0) : 8;
+
     material.uniforms.uTime.value = time * 0.001;
-    material.uniforms.uEffect.value = parseInt(uiEffect.value);
+    material.uniforms.uEffect.value = currentEff;
     material.uniforms.uIntensity.value = currentInt;
     
-    // 렌더링 타이밍 픽스: 대기 중일때도 첫 프레임 UI를 그림
     if (sourceTex && trackingData.length > 0) drawHUD(); 
     renderer.render(scene, camera);
 
