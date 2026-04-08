@@ -49,7 +49,7 @@ const lofiShader = {
         void main() {
             vec4 sum = vec4(0.0);
             float count = 0.0;
-            float blurRadius = uBlur * 0.02; // 블러 최대치 살짝 상향
+            float blurRadius = uBlur * 0.02;
 
             // 1. Focus Blur
             for(float x = -2.0; x <= 2.0; x += 1.0) {
@@ -101,14 +101,58 @@ function init() {
     animate();
 }
 
+// 🌟 비디오 및 이미지 하이브리드 업로드 로직
 imageUpload.onchange = (e) => {
-    const reader = new FileReader();
-    reader.onload = (event) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const url = URL.createObjectURL(file);
+
+    // 기존 재생 중인 비디오 정지 및 메모리 해제
+    if (window.currentVideoElement) {
+        window.currentVideoElement.pause();
+        window.currentVideoElement.removeAttribute('src');
+        window.currentVideoElement.load();
+    }
+
+    // 🎬 비디오 처리
+    if (file.type.startsWith('video/')) {
+        const video = document.createElement('video');
+        video.src = url;
+        video.crossOrigin = 'anonymous';
+        video.loop = true;
+        video.muted = true; // 강제 음소거로 브라우저 보안 우회
+        video.playsInline = true;
+        window.currentVideoElement = video;
+
+        video.play().then(() => {
+            const tex = new THREE.VideoTexture(video);
+            tex.minFilter = THREE.LinearFilter;
+            tex.magFilter = THREE.LinearFilter;
+            
+            // 셰이더로 비디오 텍스처 전송
+            material.uniforms.tDiffuse.value = tex;
+            currentImage = video; 
+
+            const aspect = video.videoWidth / video.videoHeight;
+            const winH = window.innerHeight * 0.8;
+            renderer.setSize(winH * aspect, winH);
+            
+            btnReset.click();
+        }).catch(err => {
+            alert("비디오 재생에 실패했습니다.");
+            console.error(err);
+        });
+
+    // 📸 이미지 처리
+    } else if (file.type.startsWith('image/')) {
         const img = new Image();
         img.onload = () => {
             currentImage = img;
             const tex = new THREE.Texture(img);
             tex.needsUpdate = true;
+            
+            // 셰이더로 이미지 텍스처 전송
             material.uniforms.tDiffuse.value = tex;
 
             const aspect = img.width / img.height;
@@ -117,9 +161,8 @@ imageUpload.onchange = (e) => {
             
             btnReset.click();
         };
-        img.src = event.target.result;
-    };
-    reader.readAsDataURL(e.target.files[0]);
+        img.src = url;
+    }
 };
 
 btnReset.onclick = () => {
@@ -150,25 +193,14 @@ function animate() {
     material.uniforms.uTime.value = time;
 
     if (isSwirling) {
-        // 🌟 진짜 무작위 광기 로직 (Pure Chaotic Random)
-        // 매 프레임마다 약 15%의 확률로 파라미터들이 완전히 랜덤한 값으로 폭주합니다.
         if (Math.random() > 0.85) {
-            
-            // 초점(Blur): 평소엔(70%) 맞다가, 가끔(30%) 확 나감
             uiBlur.value = Math.random() > 0.7 ? Math.random() * 1.0 : 0.0;
-            
-            // 색감(Vintage): 0 ~ 1.0 사이를 완전히 무작위로 널뜀
             uiVintage.value = Math.random();
-            
-            // 노이즈(Noise): 갑자기 확 생겼다가 줄어들기를 반복
             uiNoise.value = Math.random() * 0.15;
-            
-            // 컬러 압축(Crunch): 8비트 수준까지 처참하게 깨졌다가 멀쩡해지기를 반복
             uiCrunch.value = 8 + Math.floor(Math.random() * 120);
         }
     }
 
-    // 슬라이더 값을 셰이더로 실시간 주입
     material.uniforms.uBlur.value = parseFloat(uiBlur.value);
     material.uniforms.uVintage.value = parseFloat(uiVintage.value);
     material.uniforms.uNoise.value = parseFloat(uiNoise.value);
@@ -187,7 +219,7 @@ btnSaveImg.onclick = () => {
 
 let mediaRecorder; let recordedChunks = [];
 btnRecord.onclick = () => {
-    if (!currentImage) return alert("이미지를 먼저 업로드해주세요.");
+    if (!currentImage) return alert("이미지나 비디오를 먼저 업로드해주세요.");
     
     if (btnRecord.classList.contains('rec')) {
         mediaRecorder.stop();
