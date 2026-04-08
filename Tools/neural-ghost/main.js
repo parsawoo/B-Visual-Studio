@@ -22,13 +22,11 @@ let selfieSegmentation, audioCtx, renderAudio, bakedAudioData = [];
 const FPS = 30;
 let isPlaying = false, visualFileUrl = null, rawAudioFile = null;
 
-// ─── 🌟 1. AI 엔진 초기화 (에러 완전 차단형) ───
+// ─── 🌟 1. AI 엔진 초기화 (MediaPipe + 텍스처 오버플로우 방지) ───
 async function initEngine() {
     maskCanvas = document.createElement('canvas');
     maskCtx = maskCanvas.getContext('2d');
-    
-    // 텍스처 초기화 (에러 방지용 더미 데이터)
-    maskCanvas.width = maskCanvas.height = 2;
+    maskCanvas.width = maskCanvas.height = 2; // 초기값
     maskTex = new THREE.CanvasTexture(maskCanvas);
 
     selfieSegmentation = new SelfieSegmentation({
@@ -38,24 +36,24 @@ async function initEngine() {
     
     selfieSegmentation.onResults(results => {
         if (!results.segmentationMask) return;
-        
-        // 🌟 에러 핵심 해결: AI 마스크 크기에 맞춰 캔버스 크기를 강제 리사이징
+        // AI 마스크 크기와 캔버스 크기 강제 동기화
         if (maskCanvas.width !== results.segmentationMask.width || maskCanvas.height !== results.segmentationMask.height) {
             maskCanvas.width = results.segmentationMask.width;
             maskCanvas.height = results.segmentationMask.height;
         }
-        
         maskCtx.clearRect(0, 0, maskCanvas.width, maskCanvas.height);
         maskCtx.drawImage(results.segmentationMask, 0, 0);
         maskTex.needsUpdate = true;
     });
     await selfieSegmentation.initialize();
+    console.log("AI Engine Ready");
 }
-initEngine();
 
-// ─── 2. 비율 보정 및 GL 셋업 ───
+// ─── 🌟 2. 비율 보정 (Aspect Ratio Sync) ───
 function syncCameraAspect() {
-    const origW = sourceVideo.videoWidth || 16, origH = sourceVideo.videoHeight || 9;
+    if (!renderer) return;
+    const v = renderVideo || sourceVideo;
+    const origW = v.videoWidth || 16, origH = v.videoHeight || 9;
     const aspect = origW / origH;
     const panel = document.getElementById('renderArea').getBoundingClientRect();
     let w = panel.width, h = panel.height;
@@ -66,10 +64,11 @@ function syncCameraAspect() {
     webglCanvas.style.height = Math.floor(h) + 'px';
 }
 
+// ─── 🌟 3. WebGL 초기화 & 렌더 루프 시작 (버그 1 픽스) ───
 function initGL() {
     renderer = new THREE.WebGLRenderer({ canvas: webglCanvas, antialias: true, alpha: true, preserveDrawingBuffer: true });
     scene = new THREE.Scene();
-    camera = new THREE.Camera(); // Plane을 꽉 채우기 위한 기본 카메라
+    camera = new THREE.Camera(); // Full-screen Quad용
 
     material = new THREE.ShaderMaterial({
         uniforms: {
@@ -91,46 +90,72 @@ function initGL() {
                 float bass = uAudio.x;
                 float mid = uAudio.y;
 
-                // 1. 오디오 글리치
                 if(bass > 0.45) uv.x += (rand(vec2(uTime, uv.y)) - 0.5) * 0.02 * uGlitch;
                 
                 vec4 tex = texture2D(tDiffuse, uv);
                 float mask = texture2D(tMask, vUv).r;
                 
-                // 2. AI 누끼 처리
                 if(mask < uPrecision) discard;
 
                 vec3 col = tex.rgb;
-                // 기본 스타일 적용
                 if(uColorMode == 0) col = mix(col, vec3(0.0, 1.0, 0.8), 0.7);
                 else if(uColorMode == 1) col = mix(col, vec3(1.0, 0.2, 0.2), 0.7);
                 
-                // 3. 9번 방 스타일 명도/톤 반응
                 if(uReactMode == 0) {
-                    float b = clamp(0.8 + (bass * 1.5), 0.5, 2.2);
-                    col *= b;
+                    col *= clamp(0.8 + (bass * 1.5), 0.5, 2.2);
                 } else {
                     col += vec3(bass * 0.3, mid * 0.2, bass * 0.5) * 0.8;
                 }
                 
-                // 4. 스캔라인 및 광폭화
                 col += sin(vUv.y * 180.0 + uTime * 15.0) * 0.05;
                 gl_FragColor = vec4(clamp(col, 0.05, 0.95), 1.0);
             }
         `,
         transparent: true
     });
-    scene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), material));
-}
-initGL();
+    mesh = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), material);
+    scene.add(mesh);
 
-// ─── 3. 소스 로드 및 오디오 베이킹 ───
+    animate(0); // 🌟 여기서 엔진 시동을 겁니다!
+}
+
+function animate(time) {
+    requestAnimationFrame(animate);
+    
+    if (isPlaying && renderVideo) {
+        // MediaPipe에 프레임 전달
+        selfieSegmentation.send({ image: renderVideo });
+
+        const frame = Math.floor(renderAudio.currentTime * FPS);
+        if (bakedAudioData[frame]) {
+            const d = bakedAudioData[frame];
+            material.uniforms.uAudio.value.x += (d.bass - material.uniforms.uAudio.value.x) * 0.15;
+            material.uniforms.uAudio.value.y += (d.mid - material.uniforms.uAudio.value.y) * 0.15;
+            
+            visCtx.clearRect(0,0,150,40); visCtx.fillStyle='#00ffcc';
+            visCtx.fillRect(10, 40-d.bass*10, 35, d.bass*10); 
+            visCtx.fillRect(60, 40-d.mid*10, 35, d.mid*10);
+        }
+    }
+    
+    if (material) {
+        material.uniforms.uTime.value = time * 0.001;
+        material.uniforms.uPrecision.value = parseFloat(document.getElementById('uiPrecision').value);
+        material.uniforms.uGlitch.value = parseFloat(document.getElementById('uiGlitch').value);
+        material.uniforms.uColorMode.value = parseInt(document.getElementById('uiColorMode').value);
+        material.uniforms.uReactMode.value = parseInt(document.getElementById('uiReactMode').value);
+    }
+    renderer.render(scene, camera);
+}
+
+// ─── 🌟 4. 소스 로드 & 9번 방의 완벽한 베이킹 엔진 ───
 visualUpload.onchange = (e) => {
     visualFileUrl = URL.createObjectURL(e.target.files[0]);
     sourceVideo.src = visualFileUrl;
     sourceVideo.style.display = 'block';
     sourceVideo.onloadeddata = () => { syncCameraAspect(); btnMake.disabled = !rawAudioFile; };
 };
+
 audioUpload.onchange = (e) => {
     rawAudioFile = e.target.files[0];
     btnMake.disabled = !visualFileUrl;
@@ -139,7 +164,7 @@ audioUpload.onchange = (e) => {
 btnMake.onclick = async () => {
     btnMake.disabled = true;
     loadingSpinner.style.display = 'block';
-    statusText.innerText = "신경망 데이터 베이킹 중...";
+    statusText.innerText = "오디오 주파수 해체 중...";
     progressContainer.style.display = 'block';
     try {
         if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -163,7 +188,8 @@ btnMake.onclick = async () => {
         renderVideo.loop = true; renderVideo.muted = true; renderVideo.playsInline = true;
         renderVideo.onloadeddata = () => {
             sourceTex = new THREE.VideoTexture(renderVideo);
-            material.uniforms.tDiffuse.value = sourceTex;
+            material.uniforms.tDiffuse.value = sourceTex; // 🌟 버그 3 해결: 텍스처 할당
+            syncCameraAspect(); // 🌟 버그 2 해결: 비디오 기준 리사이즈
             loadingSpinner.style.display = 'none';
             statusOverlay.style.display = 'none';
             btnPlay.disabled = false; btnRecord.disabled = false;
@@ -173,7 +199,6 @@ btnMake.onclick = async () => {
     } catch (e) { alert("Error"); btnMake.disabled = false; }
 };
 
-// ─── 4. 실행 및 렌더 루프 ───
 btnPlay.onclick = () => {
     if (isPlaying) {
         renderVideo.pause(); renderAudio.pause();
@@ -184,29 +209,7 @@ btnPlay.onclick = () => {
     }
 };
 
-function animate(time) {
-    requestAnimationFrame(animate);
-    if (isPlaying && renderVideo) {
-        // AI 엔진에 현재 영상 쏴주기
-        selfieSegmentation.send({ image: renderVideo });
-
-        const frame = Math.floor(renderAudio.currentTime * FPS);
-        if (bakedAudioData[frame]) {
-            const d = bakedAudioData[frame];
-            material.uniforms.uAudio.value.x += (d.bass - material.uniforms.uAudio.value.x) * 0.15;
-            material.uniforms.uAudio.value.y += (d.mid - material.uniforms.uAudio.value.y) * 0.15;
-            visCtx.clearRect(0,0,150,40); visCtx.fillStyle='#00ffcc';
-            visCtx.fillRect(10, 40-d.bass*10, 35, d.bass*10); visCtx.fillRect(60, 40-d.mid*10, 35, d.mid*10);
-        }
-    }
-    if (material) {
-        material.uniforms.uTime.value = time * 0.001;
-        material.uniforms.uPrecision.value = parseFloat(document.getElementById('uiPrecision').value);
-        material.uniforms.uGlitch.value = parseFloat(document.getElementById('uiGlitch').value);
-        material.uniforms.uColorMode.value = parseInt(document.getElementById('uiColorMode').value);
-        material.uniforms.uReactMode.value = parseInt(document.getElementById('uiReactMode').value);
-    }
-    renderer.render(scene, camera);
-}
-
 window.addEventListener('resize', syncCameraAspect);
+
+// ─── 시동 ───
+initEngine().then(() => initGL());
