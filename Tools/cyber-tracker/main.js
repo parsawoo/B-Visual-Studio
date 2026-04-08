@@ -8,11 +8,10 @@ const hudCtx = hudCanvas.getContext('2d');
 const imageUpload = document.getElementById('imageUpload');
 const uiBoxStyle = document.getElementById('uiBoxStyle');
 const uiEffect = document.getElementById('uiEffect');
-// 🌟 치명적 에러 원인이었던 누락 변수 선언 추가 완료
 const uiIntensity = document.getElementById('uiIntensity'); 
 const uiObjects = document.getElementById('uiObjects'); 
 const uiSensitivity = document.getElementById('uiSensitivity'); 
-const uiNodes = document.getElementById('uiNodes');
+const uiNodes = document.getElementById('uiNodes'); 
 const uiLineStyle = document.getElementById('uiLineStyle');
 const uiLineDensity = document.getElementById('uiLineDensity');
 const uiColor = document.getElementById('uiColor');
@@ -64,6 +63,7 @@ async function initDualAI() {
 }
 initDualAI();
 
+// ─── 🌟 핵심: 셰이더에 고전적인 1-bit Bayer Dithering (uEffect == 9) 추가 ───
 const cyberShader = {
     uniforms: {
         tDiffuse: { value: null }, uTime: { value: 0.0 },
@@ -74,21 +74,45 @@ const cyberShader = {
     fragmentShader: `
         precision highp float; varying vec2 vUv; uniform sampler2D tDiffuse; uniform float uTime;
         uniform vec4 uBoxes[${TOTAL_BOXES}]; uniform int uEffect; uniform float uIntensity;
+        
         float rand(vec2 co){ return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453); }
+        
         void main() {
             vec2 uv = vUv; bool inside = false; vec4 bData = vec4(0.0);
             for(int i=0; i<${TOTAL_BOXES}; i++) {
                 vec4 b = uBoxes[i];
                 if(b.z > 0.0 && uv.x > b.x && uv.x < b.x + b.z && uv.y > b.y && uv.y < b.y + b.w) { inside = true; bData = b; break; }
             }
+            
             vec4 color = texture2D(tDiffuse, uv);
+            
             if(inside && uEffect > 0) {
-                if(uEffect==2) { float pix = 50.0/clamp(uIntensity,0.1,2.0); color = texture2D(tDiffuse,floor(uv*pix)/pix); }
-                else if(uEffect==4) { vec2 z=bData.xy+(uv-bData.xy)*clamp(1.0-(uIntensity*0.4),0.1,1.0); color=texture2D(tDiffuse,z); }
-                else if(uEffect==8) { 
+                if(uEffect==2) { 
+                    float pix = 50.0/clamp(uIntensity,0.1,2.0); color = texture2D(tDiffuse,floor(uv*pix)/pix); 
+                }
+                else if(uEffect==4) { 
+                    vec2 z=bData.xy+(uv-bData.xy)*clamp(1.0-(uIntensity*0.4),0.1,1.0); color=texture2D(tDiffuse,z); 
+                }
+                else if(uEffect==8) { // 기존 컬러 글리치 디더
                     float lum = dot(color.rgb,vec3(0.299,0.587,0.114)); vec2 scl=gl_FragCoord.xy/clamp(uIntensity*2.0,1.0,4.0);
                     float dth = fract(sin(dot(floor(scl),vec2(12.9898,78.233)))*43758.5453);
                     color.rgb = vec3(step(0.5,lum+(dth*0.5-0.25))) * mix(vec3(1.0),vec3(0.0,1.0,0.6),clamp(uIntensity,0.0,1.0));
+                }
+                else if(uEffect==9) { 
+                    // 🌟 1-bit Classic Mac Ordered Dither (Bayer Matrix)
+                    float luma = dot(color.rgb, vec3(0.299, 0.587, 0.114)) * uIntensity;
+                    
+                    int cx = int(mod(gl_FragCoord.x, 4.0));
+                    int cy = int(mod(gl_FragCoord.y, 4.0));
+                    
+                    float m = 0.0;
+                    if(cx==0 && cy==0) m=0.0625; else if(cx==1 && cy==0) m=0.5625; else if(cx==2 && cy==0) m=0.1875; else if(cx==3 && cy==0) m=0.6875;
+                    else if(cx==0 && cy==1) m=0.8125; else if(cx==1 && cy==1) m=0.3125; else if(cx==2 && cy==1) m=0.9375; else if(cx==3 && cy==1) m=0.4375;
+                    else if(cx==0 && cy==2) m=0.2500; else if(cx==1 && cy==2) m=0.7500; else if(cx==2 && cy==2) m=0.1250; else if(cx==3 && cy==2) m=0.6250;
+                    else if(cx==0 && cy==3) m=1.0000; else if(cx==1 && cy==3) m=0.5000; else if(cx==2 && cy==3) m=0.8750; else if(cx==3 && cy==3) m=0.3750;
+                    
+                    // 완전한 흑(0)과 백(1)으로만 출력
+                    color.rgb = vec3(step(m, luma));
                 }
             }
             gl_FragColor = color;
@@ -196,7 +220,10 @@ if(btnAnalyze) {
                 const face = holisticRes.faceLandmarks;
                 const features = {
                     'EYE_L': [33, 133, 160, 159, 158, 144], 'EYE_R': [362, 263, 387, 386, 385, 373],
-                    'NOSE': [1, 2, 98, 327, 168], 'MOUTH': [61, 291, 39, 181, 0, 17]
+                    'NOSE': [1, 2, 98, 327, 168], 'MOUTH': [61, 291, 39, 181, 0, 17],
+                    'BROW_L': [46, 53, 52, 65, 55], 'BROW_R': [276, 283, 282, 295, 285],
+                    'CHEEK_L': [116, 117, 118, 119], 'CHEEK_R': [345, 346, 347, 348],
+                    'CHIN': [152, 148, 176, 149, 150], 'FOREHEAD': [10, 338, 297, 332, 284, 109, 67, 103, 54, 21]
                 };
 
                 for (let [name, indices] of Object.entries(features)) {
@@ -280,16 +307,24 @@ function drawHUD() {
     const maxRenderNodes = uiNodes ? parseInt(uiNodes.value) : 15;
 
     let activeBoxCount = 0;
+    let activeFaceCount = 0;
+
     currentFrame.boxes.forEach((o, i) => {
         if(i >= TOTAL_BOXES) return;
-        if(o.class.includes('EYE') || o.class === 'NOSE' || o.class === 'MOUTH') { if(activeBoxCount > maxRenderObjs + maxRenderNodes) return; }
-        else { if(activeBoxCount >= maxRenderObjs) return; }
+        
+        const isFacePart = o.class.match(/EYE|NOSE|MOUTH|BROW|CHEEK|CHIN|FOREHEAD/);
+        if(isFacePart) {
+            if(activeFaceCount >= maxRenderNodes) return;
+            activeFaceCount++;
+        } else {
+            if(activeBoxCount >= maxRenderObjs) return;
+            activeBoxCount++;
+        }
 
         let rb = renderBoxes[i];
         rb.active = true; rb.class = o.class;
         rb.x += (o.x - rb.x) * 0.4; rb.y += (o.y - rb.y) * 0.4;
         rb.w += (o.w - rb.w) * 0.4; rb.h += (o.h - rb.h) * 0.4;
-        activeBoxCount++;
     });
     for(let i=currentFrame.boxes.length; i<TOTAL_BOXES; i++) renderBoxes[i].active = false;
 
@@ -315,7 +350,7 @@ function drawHUD() {
             const len = Math.min(cw, ch) * 0.2;
             hudCtx.moveTo(cx, cy + len); hudCtx.lineTo(cx, cy); hudCtx.lineTo(cx + len, cy);
             hudCtx.moveTo(cx + cw, cy + len); hudCtx.lineTo(cx + cw, cy); 
-            hudCtx.lineTo(cx + cw - len, cy);
+            hudCtx.lineTo(cx + cw - len, cy); 
             hudCtx.moveTo(cx, cy + ch - len); hudCtx.lineTo(cx, cy + ch); hudCtx.lineTo(cx + len, cy + ch);
             hudCtx.moveTo(cx + cw, cy + ch - len); hudCtx.lineTo(cx + cw, cy + ch); hudCtx.lineTo(cx + cw - len, cy + ch);
             hudCtx.stroke(); hudCtx.fillStyle = color; hudCtx.fillText(`[${rb.class.toUpperCase()}]`, cx, cy - 5);
@@ -362,7 +397,7 @@ function animate(time) {
     }
 
     const currentInt = uiIntensity ? (parseFloat(uiIntensity.value) || 1.0) : 1.0;
-    const currentEff = uiEffect ? (parseInt(uiEffect.value) || 0) : 8;
+    const currentEff = uiEffect ? (parseInt(uiEffect.value) || 0) : 9; // 기본값을 B&W 디더(9)로
 
     material.uniforms.uTime.value = time * 0.001;
     material.uniforms.uEffect.value = currentEff;
