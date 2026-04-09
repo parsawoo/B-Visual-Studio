@@ -11,14 +11,13 @@ const btnSaveImg = document.getElementById('btnSaveImg');
 const btnRecord = document.getElementById('btnSaveVid');
 
 const density = "Ñ@#W$9876543210?!abc;:+=-,._ ";
-let currentSource = null; // 이미지나 비디오 엘리먼트를 저장
+let currentSource = null; 
 let isVideo = false;
 let currentImageData = null;
 let isAnimated = false;
 let animationId = null;
 let rawAsciiText = "";
 
-// 🌟 시작할 때 초기 테마 렌더링
 updateTheme();
 
 function updateTheme() {
@@ -31,7 +30,7 @@ function updateTheme() {
 
 bgModeSelect.addEventListener('change', updateTheme);
 
-// 🌟 [핵심 변경] 단일 이미지가 아닌 '현재 프레임'을 처리하는 함수
+// ─── 🌟 1. 해상도 패치: 화면 크기와 렌더링 픽셀 완벽 분리 ───
 function processFrame() {
   if (!currentSource) return;
 
@@ -39,15 +38,19 @@ function processFrame() {
   const sourceWidth = isVideo ? currentSource.videoWidth : currentSource.width;
   const sourceHeight = isVideo ? currentSource.videoHeight : currentSource.height;
   
-  // 소스가 아직 로드되지 않은 상태 방지
   if (sourceWidth === 0 || sourceHeight === 0) return;
 
   const maxWidth = window.innerWidth * 0.9;
   const maxHeight = window.innerHeight * 0.8;
   const scale = Math.min(maxWidth / sourceWidth, maxHeight / sourceHeight);
   
-  canvas.width = sourceWidth * scale;
-  canvas.height = sourceHeight * scale;
+  // 🌟 실제 캔버스 내부 픽셀은 원본 소스 크기 그대로 유지!
+  canvas.width = sourceWidth;
+  canvas.height = sourceHeight;
+  
+  // 🌟 유저 눈에 보이는 화면(UI) 크기만 CSS로 반응형 스케일링
+  canvas.style.width = Math.floor(sourceWidth * scale) + 'px';
+  canvas.style.height = Math.floor(sourceHeight * scale) + 'px';
 
   const offCanvas = document.createElement('canvas');
   const offCtx = offCanvas.getContext('2d');
@@ -116,31 +119,27 @@ function renderASCII() {
   }
 }
 
-// 🌟 애니메이션 루프: 비디오일 경우 계속 프레임을 따와서 렌더링
 function loop() {
     if (isVideo && currentSource.readyState >= 2) {
-        processFrame(); // 비디오는 매 프레임마다 픽셀 데이터 업데이트
+        processFrame(); 
     } else if (isAnimated) {
-        renderASCII(); // 이미지는 픽셀 데이터는 놔두고 글자만 흔들기
+        renderASCII(); 
     }
     animationId = requestAnimationFrame(loop);
 }
 
-// 🌟 [비디오+이미지 하이브리드 업로드 로직]
 imageUpload.addEventListener('change', (e) => {
   const file = e.target.files[0];
   if (!file) return;
 
   const url = URL.createObjectURL(file);
 
-  // 기존 소스가 비디오였다면 정지
   if (isVideo && currentSource) {
       currentSource.pause();
       currentSource.removeAttribute('src');
       currentSource.load();
   }
   
-  // 기존 루프 정지
   if (animationId) cancelAnimationFrame(animationId);
 
   if (file.type.startsWith('video/')) {
@@ -149,12 +148,11 @@ imageUpload.addEventListener('change', (e) => {
       video.src = url;
       video.crossOrigin = 'anonymous';
       video.loop = true;
-      video.muted = true; // 강제 음소거 (브라우저 정책 통과)
+      video.muted = true; 
       video.playsInline = true;
       
       video.play().then(() => {
           currentSource = video;
-          // 비디오는 재생되는 동안 계속 캔버스를 업데이트해야 하므로 무조건 루프 시작
           loop(); 
       }).catch(err => {
           console.error("Video play error:", err);
@@ -166,7 +164,7 @@ imageUpload.addEventListener('change', (e) => {
       const img = new Image();
       img.onload = () => {
           currentSource = img;
-          processFrame(); // 이미지는 1장만 처리
+          processFrame(); 
           if (isAnimated) loop();
       };
       img.src = url;
@@ -181,11 +179,11 @@ btnAnimate.addEventListener('click', () => {
   if (isAnimated) {
     btnAnimate.innerText = 'Stop Animation';
     btnAnimate.classList.add('active');
-    if (!isVideo) loop(); // 이미지는 버튼을 눌러야 루프 시작 (비디오는 이미 루프 중)
+    if (!isVideo) loop(); 
   } else {
     btnAnimate.innerText = 'Play Animation';
     btnAnimate.classList.remove('active');
-    if (!isVideo) cancelAnimationFrame(animationId); // 비디오는 글자 흔들기만 끄고 렌더 루프는 유지
+    if (!isVideo) cancelAnimationFrame(animationId); 
   }
 });
 
@@ -201,7 +199,7 @@ btnCopy.addEventListener('click', () => {
 btnSaveImg.addEventListener('click', () => {
   if (!currentSource) return;
   const a = document.createElement('a');
-  a.href = canvas.toDataURL('image/jpeg', 0.9);
+  a.href = canvas.toDataURL('image/jpeg', 0.95);
   a.download = 'b-visual-ascii.jpg';
   a.click();
 });
@@ -215,7 +213,25 @@ btnRecord.addEventListener('click', () => {
   
   if (!isRecording) {
     const stream = canvas.captureStream(30);
-    mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+
+    // ─── 🌟 2. 만능 코덱 탐지 및 20Mbps 초고화질 패치 ───
+    let options = { videoBitsPerSecond: 20000000 };
+        
+    if (MediaRecorder.isTypeSupported('video/webm; codecs=vp9')) {
+        options.mimeType = 'video/webm; codecs=vp9';
+    } else if (MediaRecorder.isTypeSupported('video/webm')) {
+        options.mimeType = 'video/webm';
+    } else if (MediaRecorder.isTypeSupported('video/mp4')) {
+        options.mimeType = 'video/mp4';
+    }
+
+    try {
+        mediaRecorder = new MediaRecorder(stream, options);
+    } catch (e) {
+        console.warn("고화질 코덱을 지원하지 않는 브라우저입니다. 기본값으로 녹화합니다.");
+        mediaRecorder = new MediaRecorder(stream);
+    }
+
     mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
     mediaRecorder.onstop = () => {
       const blob = new Blob(recordedChunks, { type: 'video/webm' });
@@ -227,11 +243,11 @@ btnRecord.addEventListener('click', () => {
       URL.revokeObjectURL(url);
       recordedChunks = [];
     };
+    
     mediaRecorder.start();
     isRecording = true;
     
-    // 만약 이미지인데 애니메이션이 꺼져있다면 강제로 켬
-    if (!isVideo && !isAnimated) btnAnimate.click(); 
+    // 🌟 강제로 애니메이션 켜던 억지 로직 삭제 (유저 세팅 그대로 녹화 보장)
     
     btnRecord.innerText = 'Stop & Save Video';
     btnRecord.classList.add('recording');

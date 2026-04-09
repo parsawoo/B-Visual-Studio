@@ -3,12 +3,23 @@ import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
 
 const container = document.getElementById('canvas-container');
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
+
+// ─── 🌟 1. 해상도 패치: 내부 렌더링 화소를 1920x1080 (FHD)로 완전 고정 ───
+const TARGET_W = 1920;
+const TARGET_H = 1080;
+
+const camera = new THREE.PerspectiveCamera(50, TARGET_W / TARGET_H, 0.1, 1000);
 camera.position.set(0, -1, 9); 
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
-renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setPixelRatio(1); // 고정 해상도를 쓰므로 픽셀비 뻥튀기 방지
+renderer.setSize(TARGET_W, TARGET_H, false); // false로 내부 화소 고정
+
+// 🌟 캔버스 껍데기(UI)는 창 크기에 맞춰 16:9 비율로 쏙 들어가게 CSS 처리
+renderer.domElement.style.width = '100vw';
+renderer.domElement.style.height = '100vh';
+renderer.domElement.style.objectFit = 'contain'; 
+
 renderer.shadowMap.enabled = true; 
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.outputColorSpace = THREE.SRGBColorSpace; 
@@ -136,8 +147,26 @@ const btnRecord = document.getElementById('btnRecord');
 
 btnRecord.addEventListener('click', () => {
   if (!isRecording) {
-    const stream = renderer.domElement.captureStream(60);
-    mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+    const stream = renderer.domElement.captureStream(60); // 부드러운 펄럭임을 위해 60프레임 유지
+
+    // ─── 🌟 2. 만능 코덱 탐지 및 20Mbps 초고화질 패치 ───
+    let options = { videoBitsPerSecond: 20000000 };
+    
+    if (MediaRecorder.isTypeSupported('video/webm; codecs=vp9')) {
+        options.mimeType = 'video/webm; codecs=vp9';
+    } else if (MediaRecorder.isTypeSupported('video/webm')) {
+        options.mimeType = 'video/webm';
+    } else if (MediaRecorder.isTypeSupported('video/mp4')) {
+        options.mimeType = 'video/mp4';
+    }
+
+    try {
+        mediaRecorder = new MediaRecorder(stream, options);
+    } catch (e) {
+        console.warn("고화질 코덱을 지원하지 않는 브라우저입니다. 기본값으로 녹화합니다.");
+        mediaRecorder = new MediaRecorder(stream);
+    }
+
     mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
     mediaRecorder.onstop = () => {
       const blob = new Blob(recordedChunks, { type: 'video/webm' });
@@ -149,6 +178,7 @@ btnRecord.addEventListener('click', () => {
       URL.revokeObjectURL(url);
       recordedChunks = [];
     };
+    
     mediaRecorder.start();
     isRecording = true;
     btnRecord.innerText = 'Stop & Save Video';
@@ -181,7 +211,6 @@ function animate() {
   const gravityVec = new THREE.Vector3(0, -gravVal, 0);
   const baseWind = new THREE.Vector3(windX, 0, windZ).multiplyScalar(strength);
 
-  // 🌟 여기서부터 flagMesh 체크 시작
   if (flagMesh) {
     // 1. 입자 물리 적용 (풍압 및 난류)
     particles.forEach((p) => {
@@ -198,18 +227,17 @@ function animate() {
       }
     });
 
-    // 2. 자가 충돌(Self-Collision) 방지 로직 (Z축 얽힘 해결 핵심)
+    // 2. 자가 충돌(Self-Collision) 방지 로직
     for (let j = 0; j < particles.length; j += 4) { 
       for (let k = j + 4; k < particles.length; k += 4) {
         const p1 = particles[j];
         const p2 = particles[k];
         const distVec = p1.position.clone().sub(p2.position);
         const distSq = distVec.lengthSq();
-        const minDist = 0.15; // 최소 간격 (천의 두께)
+        const minDist = 0.15; 
         
         if (distSq < minDist * minDist) {
           const dist = Math.sqrt(distSq);
-          // 🌟 오타 수정: minidist -> minDist
           const push = distVec.multiplyScalar((minDist - dist) / dist).multiplyScalar(0.5);
           if (p1.mass > 0) p1.position.add(push);
           if (p2.mass > 0) p2.position.sub(push);
@@ -217,7 +245,7 @@ function animate() {
       }
     }
 
-    // 3. 제약 조건 해결 (물리 연산 반복)
+    // 3. 제약 조건 해결
     for (let i = 0; i < 25; i++) {
       constraints.forEach(([p1, p2, dist]) => {
         const diff = p2.position.clone().sub(p1.position);
@@ -229,7 +257,7 @@ function animate() {
       });
     }
 
-    // 4. 메쉬 지오메트리 실제 업데이트
+    // 4. 메쉬 지오메트리 업데이트
     const positions = flagMesh.geometry.attributes.position.array;
     for (let i = 0, j = 0; i < particles.length; i++, j += 3) {
       positions[j] = particles[i].position.x;
@@ -238,14 +266,13 @@ function animate() {
     }
     flagMesh.geometry.attributes.position.needsUpdate = true;
     flagMesh.geometry.computeVertexNormals(); 
-  } // 🌟 flagMesh 체크가 여기서 끝나야 합니다!
+  } 
 
   renderer.render(scene, camera);
 }
 animate();
 
+// 🌟 창 크기가 변해도 1920x1080 렌더링 세팅이 박살 나지 않도록 리사이즈 이벤트 제거/무효화
 window.addEventListener('resize', () => {
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
+    // CSS object-fit: contain이 다 알아서 해주므로, 여기서 WebGL 사이즈를 건드리지 않습니다.
 });

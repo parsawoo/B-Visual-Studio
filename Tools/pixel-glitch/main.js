@@ -7,7 +7,7 @@ const btnChaos = document.getElementById('btnChaos');
 const btnSaveImg = document.getElementById('btnSaveImg');
 const btnRecord = document.getElementById('btnRecord');
 
-let currentSource = null; // 이미지나 비디오 객체 저장
+let currentSource = null; 
 let isVideo = false;
 let isAnimating = false;
 let isChaosMode = false;
@@ -22,7 +22,6 @@ imageInput.onchange = (e) => {
 
   const url = URL.createObjectURL(file);
 
-  // 기존 소스가 비디오였다면 정지
   if (isVideo && currentSource) {
     currentSource.pause();
     currentSource.removeAttribute('src');
@@ -31,14 +30,14 @@ imageInput.onchange = (e) => {
 
   if (animationId) cancelAnimationFrame(animationId);
 
-  // 🎬 비디오 처리
+  // 🎬 비디오 처리 (원본 해상도 1:1 매칭 유지)
   if (file.type.startsWith('video/')) {
     isVideo = true;
     const video = document.createElement('video');
     video.src = url;
     video.crossOrigin = 'anonymous';
     video.loop = true;
-    video.muted = true; // 브라우저 자동재생 보안 우회
+    video.muted = true; 
     video.playsInline = true;
 
     video.play().then(() => {
@@ -47,12 +46,11 @@ imageInput.onchange = (e) => {
       canvas.height = video.videoHeight;
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
       
-      // 멜팅 중이 아니면 비디오가 정상 재생되도록 일반 루프 실행
       if (!isAnimating) videoLoop();
       else pixelSort();
     });
 
-  // 📸 이미지 처리
+  // 📸 이미지 처리 (원본 해상도 1:1 매칭 유지)
   } else if (file.type.startsWith('image/')) {
     isVideo = false;
     const img = new Image();
@@ -67,18 +65,16 @@ imageInput.onchange = (e) => {
   }
 };
 
-// 일반 비디오 재생 루프 (멜팅이 꺼져있을 때 작동)
 function videoLoop() {
   if (!isVideo || isAnimating) return;
   ctx.drawImage(currentSource, 0, 0, canvas.width, canvas.height);
   animationId = requestAnimationFrame(videoLoop);
 }
 
-// 🌟 픽셀 멜팅 (비디오 잔상 효과 추가)
+// 🌟 픽셀 멜팅 연산
 function pixelSort() {
   if (!currentSource || !isAnimating) return;
 
-  // 비디오일 경우: 새 프레임을 살짝 투명하게 얹어서, 기존에 흘러내린 픽셀들과 끈적하게 섞음 (Datamoshing 효과)
   if (isVideo) {
     ctx.globalAlpha = isChaosMode ? 0.3 : 0.15; 
     ctx.drawImage(currentSource, 0, 0, canvas.width, canvas.height);
@@ -148,7 +144,7 @@ function stopAnimation() {
   btnChaos.innerText = "Chaos Melting";
   cancelAnimationFrame(animationId);
   
-  if (isVideo) videoLoop(); // 멜팅을 끄면 다시 원본 영상 재생
+  if (isVideo) videoLoop(); 
 }
 
 btnPlay.onclick = () => {
@@ -193,11 +189,29 @@ btnRecord.onclick = () => {
     btnRecord.classList.remove('rec');
     btnRecord.innerText = "Record Video";
   } else {
-    if (!isAnimating) btnChaos.click(); 
+    // 🌟 강제로 Chaos Melting 켜버리던 로직 삭제 (유저 자유도 보장)
     
     recordedChunks = [];
     const stream = canvas.captureStream(30);
-    mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+
+    // ─── 🌟 만능 코덱 탐지 및 20Mbps 초고화질 패치 ───
+    let options = { videoBitsPerSecond: 20000000 };
+    
+    if (MediaRecorder.isTypeSupported('video/webm; codecs=vp9')) {
+        options.mimeType = 'video/webm; codecs=vp9';
+    } else if (MediaRecorder.isTypeSupported('video/webm')) {
+        options.mimeType = 'video/webm';
+    } else if (MediaRecorder.isTypeSupported('video/mp4')) {
+        options.mimeType = 'video/mp4';
+    }
+
+    try {
+        mediaRecorder = new MediaRecorder(stream, options);
+    } catch (e) {
+        console.warn("고화질 코덱을 지원하지 않는 브라우저입니다. 기본값으로 녹화합니다.");
+        mediaRecorder = new MediaRecorder(stream);
+    }
+
     mediaRecorder.ondataavailable = (e) => {
       if (e.data.size > 0) recordedChunks.push(e.data);
     };
@@ -210,6 +224,7 @@ btnRecord.onclick = () => {
       a.click();
       URL.revokeObjectURL(url);
     };
+    
     mediaRecorder.start();
     btnRecord.classList.add('rec');
     btnRecord.innerText = "Recording...";

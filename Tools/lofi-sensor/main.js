@@ -51,7 +51,6 @@ const lofiShader = {
             float count = 0.0;
             float blurRadius = uBlur * 0.02;
 
-            // 1. Focus Blur
             for(float x = -2.0; x <= 2.0; x += 1.0) {
                 for(float y = -2.0; y <= 2.0; y += 1.0) {
                     sum += texture2D(tDiffuse, vUv + vec2(x, y) * blurRadius);
@@ -60,10 +59,8 @@ const lofiShader = {
             }
             vec4 color = sum / count;
 
-            // 2. Color Crunch 
             color.rgb = floor(color.rgb * uCrunch) / uCrunch;
 
-            // 3. Vintage Tone 
             vec3 vColor = color.rgb;
             vColor = smoothstep(0.02, 0.98, vColor);
             float luma = dot(vColor, vec3(0.299, 0.587, 0.114));
@@ -74,7 +71,6 @@ const lofiShader = {
             finalVintage = clamp(finalVintage, 0.0, 1.0);
             color.rgb = mix(color.rgb, finalVintage, uVintage);
 
-            // 4. ISO Noise
             float noise = hash(vUv * (uTime * 0.1)) - 0.5;
             color.rgb += noise * uNoise;
 
@@ -87,7 +83,7 @@ init();
 
 function init() {
     renderer = new THREE.WebGLRenderer({ canvas, antialias: false, preserveDrawingBuffer: true });
-    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setPixelRatio(1);
     scene = new THREE.Scene(); camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
 
     material = new THREE.ShaderMaterial({
@@ -101,27 +97,40 @@ function init() {
     animate();
 }
 
-// 🌟 비디오 및 이미지 하이브리드 업로드 로직
+function adjustCanvasSize(origW, origH) {
+    const aspect = origW / origH;
+    const container = document.getElementById('canvas-container');
+    const maxWidth = container.clientWidth * 0.95;
+    const maxHeight = container.clientHeight * 0.90;
+    
+    let w = maxWidth;
+    let h = w / aspect;
+    if(h > maxHeight) { h = maxHeight; w = h * aspect; }
+    
+    renderer.setSize(origW, origH, false);
+    
+    canvas.style.width = Math.floor(w) + 'px';
+    canvas.style.height = Math.floor(h) + 'px';
+}
+
 imageUpload.onchange = (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
     const url = URL.createObjectURL(file);
 
-    // 기존 재생 중인 비디오 정지 및 메모리 해제
     if (window.currentVideoElement) {
         window.currentVideoElement.pause();
         window.currentVideoElement.removeAttribute('src');
         window.currentVideoElement.load();
     }
 
-    // 🎬 비디오 처리
     if (file.type.startsWith('video/')) {
         const video = document.createElement('video');
         video.src = url;
         video.crossOrigin = 'anonymous';
         video.loop = true;
-        video.muted = true; // 강제 음소거로 브라우저 보안 우회
+        video.muted = true; 
         video.playsInline = true;
         window.currentVideoElement = video;
 
@@ -130,21 +139,16 @@ imageUpload.onchange = (e) => {
             tex.minFilter = THREE.LinearFilter;
             tex.magFilter = THREE.LinearFilter;
             
-            // 셰이더로 비디오 텍스처 전송
             material.uniforms.tDiffuse.value = tex;
             currentImage = video; 
 
-            const aspect = video.videoWidth / video.videoHeight;
-            const winH = window.innerHeight * 0.8;
-            renderer.setSize(winH * aspect, winH);
-            
+            adjustCanvasSize(video.videoWidth, video.videoHeight);
             btnReset.click();
         }).catch(err => {
             alert("비디오 재생에 실패했습니다.");
             console.error(err);
         });
 
-    // 📸 이미지 처리
     } else if (file.type.startsWith('image/')) {
         const img = new Image();
         img.onload = () => {
@@ -152,13 +156,9 @@ imageUpload.onchange = (e) => {
             const tex = new THREE.Texture(img);
             tex.needsUpdate = true;
             
-            // 셰이더로 이미지 텍스처 전송
             material.uniforms.tDiffuse.value = tex;
 
-            const aspect = img.width / img.height;
-            const winH = window.innerHeight * 0.8;
-            renderer.setSize(winH * aspect, winH);
-            
+            adjustCanvasSize(img.width, img.height);
             btnReset.click();
         };
         img.src = url;
@@ -226,16 +226,34 @@ btnRecord.onclick = () => {
         btnRecord.classList.remove('rec');
         btnRecord.innerText = "Record Video";
     } else {
-        if(!isSwirling) btnSwirl.click();
+        // 🌟 강제로 Swirl을 켜던 로직 삭제
+        // if(!isSwirling) btnSwirl.click(); 
         
         recordedChunks = [];
         const stream = canvas.captureStream(30);
-        mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+
+        let options = { videoBitsPerSecond: 20000000 };
+        
+        if (MediaRecorder.isTypeSupported('video/webm; codecs=vp9')) {
+            options.mimeType = 'video/webm; codecs=vp9';
+        } else if (MediaRecorder.isTypeSupported('video/webm')) {
+            options.mimeType = 'video/webm';
+        } else if (MediaRecorder.isTypeSupported('video/mp4')) {
+            options.mimeType = 'video/mp4';
+        }
+
+        try {
+            mediaRecorder = new MediaRecorder(stream, options);
+        } catch (e) {
+            console.warn("고화질 코덱을 지원하지 않는 브라우저입니다. 기본값으로 녹화합니다.");
+            mediaRecorder = new MediaRecorder(stream);
+        }
+
         mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
         mediaRecorder.onstop = () => {
-            const blob = new Blob(recordedChunks, { type: 'video/webm' });
+            const blob = new Blob(recordedChunks, { type: 'video/webm' }); 
             const url = URL.createObjectURL(blob);
-            const a = document.createElement('a'); a.href = url; a.download = 'lofi-swirl.webm'; a.click();
+            const a = document.createElement('a'); a.href = url; a.download = 'lofi-export.webm'; a.click();
             URL.revokeObjectURL(url);
         };
         mediaRecorder.start();

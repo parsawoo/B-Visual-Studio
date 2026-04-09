@@ -16,8 +16,8 @@ let renderer, scene, camera, mesh;
 let density, velocity, divergence, pressure, curlFBO;
 let simRes = 1024; // 하이엔드 디테일
 let currentImage = null;
-let sourceTex = null; // 🌟 텍스처를 전역으로 안전하게 보관
-let renderMat = null; // 🌟 비디오용 특수 렌더 셰이더
+let sourceTex = null; 
+let renderMat = null; 
 
 let mouse = { x: 0, y: 0, dx: 0, dy: 0, isDown: false };
 let prevMouse = { x: 0, y: 0 };
@@ -36,7 +36,6 @@ const divergenceShader = `precision highp float; varying vec2 vUv; uniform sampl
 const pressureShader = `precision highp float; varying vec2 vUv; uniform sampler2D tPressure; uniform sampler2D tDivergence; uniform vec2 uTexelSize; void main() { float L = texture2D(tPressure, vUv - vec2(uTexelSize.x, 0.0)).x; float R = texture2D(tPressure, vUv + vec2(uTexelSize.x, 0.0)).x; float B = texture2D(tPressure, vUv - vec2(0.0, uTexelSize.y)).x; float T = texture2D(tPressure, vUv + vec2(0.0, uTexelSize.y)).x; float div = texture2D(tDivergence, vUv).x; float p = (L + R + B + T - div) * 0.25; gl_FragColor = vec4(p, 0.0, 0.0, 1.0); }`;
 const gradientSubtractShader = `precision highp float; varying vec2 vUv; uniform sampler2D tPressure; uniform sampler2D tVelocity; uniform vec2 uTexelSize; void main() { float L = texture2D(tPressure, vUv - vec2(uTexelSize.x, 0.0)).x; float R = texture2D(tPressure, vUv + vec2(uTexelSize.x, 0.0)).x; float B = texture2D(tPressure, vUv - vec2(0.0, uTexelSize.y)).x; float T = texture2D(tPressure, vUv + vec2(0.0, uTexelSize.y)).x; vec2 vel = texture2D(tVelocity, vUv).xy; vel -= vec2(R - L, T - B) * 0.5; gl_FragColor = vec4(vel, 0.0, 1.0); }`;
 
-// 🌟 추가된 셰이더: 색상이 아닌 '좌표'를 섞어서 비디오를 왜곡시킴
 const initUVShader = `precision highp float; varying vec2 vUv; void main() { gl_FragColor = vec4(vUv, 0.0, 1.0); }`;
 const renderShader = `precision highp float; varying vec2 vUv; uniform sampler2D tUV; uniform sampler2D tImage; void main() { vec2 advectedUV = texture2D(tUV, vUv).xy; gl_FragColor = texture2D(tImage, advectedUV); }`;
 
@@ -62,6 +61,25 @@ function init() {
     animate();
 }
 
+// ─── 🌟 1. 해상도 패치: 화면 크기와 렌더링 픽셀 분리 ───
+function adjustCanvasSize(origW, origH) {
+    const aspect = origW / origH;
+    const container = document.getElementById('canvas-container');
+    const maxWidth = container.clientWidth * 0.95;
+    const maxHeight = container.clientHeight * 0.90;
+    
+    let w = maxWidth;
+    let h = w / aspect;
+    if(h > maxHeight) { h = maxHeight; w = h * aspect; }
+    
+    // 🌟 내부 픽셀은 원본 영상/이미지 해상도로 강제 고정 (false 파라미터)
+    renderer.setSize(origW, origH, false);
+    
+    // 🌟 유저가 보는 UI 캔버스 크기만 CSS로 반응형 조절
+    canvas.style.width = Math.floor(w) + 'px';
+    canvas.style.height = Math.floor(h) + 'px';
+}
+
 function updateMouse(e) {
     const rect = canvas.getBoundingClientRect();
     const x = (e.clientX - rect.left) / rect.width;
@@ -80,7 +98,6 @@ btnReset.onclick = () => {
     renderToFBO(new THREE.MeshBasicMaterial({color:0x000000}), velocity.read);
     renderToFBO(new THREE.MeshBasicMaterial({color:0x000000}), velocity.write);
     
-    // 🌟 픽셀 리셋 (도화지를 쫙 폄)
     const initUVMat = createShader(initUVShader, {});
     renderToFBO(initUVMat, density.read);
     renderToFBO(initUVMat, density.write);
@@ -88,7 +105,6 @@ btnReset.onclick = () => {
     isMelting = false;
 };
 
-// 🌟 5번 방 전용: 변수 충돌 없는 안전한 하이브리드 로직
 imageUpload.onchange = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -116,9 +132,8 @@ imageUpload.onchange = (e) => {
             sourceTex.magFilter = THREE.LinearFilter;
             currentImage = video; 
             
-            const aspect = video.videoWidth / video.videoHeight;
-            const winH = window.innerHeight * 0.8;
-            renderer.setSize(winH * aspect, winH);
+            // 🌟 원본 해상도 추출 후 조절 함수 호출
+            adjustCanvasSize(video.videoWidth, video.videoHeight);
             
             if(btnReset) btnReset.click();
         }).catch(err => {
@@ -133,9 +148,8 @@ imageUpload.onchange = (e) => {
             sourceTex.needsUpdate = true;
             currentImage = img;
             
-            const aspect = img.width / img.height;
-            const winH = window.innerHeight * 0.8;
-            renderer.setSize(winH * aspect, winH);
+            // 🌟 원본 해상도 추출 후 조절 함수 호출
+            adjustCanvasSize(img.width, img.height);
             
             if(btnReset) btnReset.click();
         };
@@ -186,7 +200,7 @@ function applyVelocitySplat(x, y, dx, dy, radius) {
         uPoint: new THREE.Vector2(x, y),
         uDirection: new THREE.Vector2(dx, dy),
         uRadius: radius,
-        uAspect: canvas.width / canvas.height
+        uAspect: canvas.width / canvas.height // 🌟 렌더러 사이즈 기준으로 올바르게 연산됨
     });
     renderToFBO(mat, velocity.write); velocity.swap();
 }
@@ -219,11 +233,9 @@ function stepPhysics() {
     mat = createShader(gradientSubtractShader, { tPressure: pressure.read.texture, tVelocity: velocity.read.texture, uTexelSize: texelSize });
     renderToFBO(mat, velocity.write); velocity.swap();
 
-    // 🌟 6. Density(이미지 컬러)가 아닌 UV(좌표 젤리)를 뒤섞음
     mat = createShader(advectShader, { tVelocity: velocity.read.texture, tSource: density.read.texture, uTexelSize: texelSize, uDissipation: 1.0 });
     renderToFBO(mat, density.write); density.swap();
 
-    // 🌟 7. 최종 출력: 섞인 젤리(UV)를 통해 원본 소스(비디오/이미지)를 보여줌
     if(sourceTex) {
         renderMat.uniforms.tUV.value = density.read.texture;
         renderMat.uniforms.tImage.value = sourceTex;
@@ -231,7 +243,6 @@ function stepPhysics() {
     }
 }
 
-// --- 헬퍼 함수 ---
 function createShader(fragmentShader, uniforms) {
     const unifs = {}; for (let key in uniforms) unifs[key] = { value: uniforms[key] };
     return new THREE.ShaderMaterial({ uniforms: unifs, vertexShader: baseVertex, fragmentShader: fragmentShader });
@@ -259,7 +270,25 @@ btnRecord.onclick = () => {
     }else{
         btnMelt.click(); recordedChunks = []; 
         const stream = canvas.captureStream(30);
-        mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+        
+        // ─── 🌟 2. 만능 코덱 탐지 및 20Mbps 초고화질 패치 ───
+        let options = { videoBitsPerSecond: 20000000 };
+        
+        if (MediaRecorder.isTypeSupported('video/webm; codecs=vp9')) {
+            options.mimeType = 'video/webm; codecs=vp9';
+        } else if (MediaRecorder.isTypeSupported('video/webm')) {
+            options.mimeType = 'video/webm';
+        } else if (MediaRecorder.isTypeSupported('video/mp4')) {
+            options.mimeType = 'video/mp4';
+        }
+
+        try {
+            mediaRecorder = new MediaRecorder(stream, options);
+        } catch (e) {
+            console.warn("고화질 코덱을 지원하지 않는 브라우저입니다. 기본값으로 녹화합니다.");
+            mediaRecorder = new MediaRecorder(stream);
+        }
+
         mediaRecorder.ondataavailable = e => { if(e.data.size > 0) recordedChunks.push(e.data); };
         mediaRecorder.onstop = () => {
             const blob = new Blob(recordedChunks, { type: 'video/webm' });
