@@ -3,10 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Neural Digital Ghost - B-Visual Studio</title>
+  <title>Neural Ghost - B-Visual Studio</title>
   <link rel="shortcut icon" href="data:image/x-icon;," type="image/x-icon">
   <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
   
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect x='1' y='1' width='6' height='6' rx='1' fill='%2322c55e'/><rect x='9' y='1' width='6' height='6' rx='1' fill='%2322c55e'/><rect x='1' y='9' width='6' height='6' rx='1' fill='%2322c55e'/><rect x='9' y='9' width='6' height='6' rx='1' fill='%2322c55e'/></svg>">
+
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/selfie_segmentation.js" crossorigin="anonymous"></script>
 
   <style>
@@ -20,29 +22,32 @@
     #renderArea { width: 100%; height: 100%; position: relative; display: flex; justify-content: center; align-items: center; }
     #webglCanvas { position: absolute; }
     #statusOverlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 15; text-align: center; }
-    .spinner { width: 40px; height: 40px; border: 3px solid rgba(0, 255, 204, 0.2); border-top-color: #00ffcc; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 20px; }
+    .spinner { width: 40px; height: 40px; border: 3px solid rgba(0, 255, 204, 0.2); border-top-color: #00ffcc; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 20px; display: none; }
     @keyframes spin { 100% { transform: rotate(360deg); } }
     .progress-bar-container { width: 60%; height: 8px; background: #222; border-radius: 4px; margin-top: 20px; overflow: hidden; display: none; border: 1px solid #333; }
     #progressBar { height: 100%; width: 0%; background: #00ffcc; transition: width 0.1s linear; }
 
-    .ui-panel { position: absolute; bottom: 1.5rem; background: rgba(10, 15, 20, 0.95); backdrop-filter: blur(15px); padding: 1.5rem; border-radius: 8px; border: 1px solid rgba(0, 255, 204, 0.3); display: flex; flex-direction: column; gap: 1.2rem; z-index: 10; min-width: 1100px; box-shadow: 0 0 30px rgba(0, 0, 0, 0.8); }
-    .top-controls { display: flex; gap: 1.5rem; justify-content: center; align-items: flex-end; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 1.2rem; }
-    .bottom-controls { display: flex; gap: 1.5rem; justify-content: center; align-items: center; }
+    .ui-panel { position: absolute; bottom: 1.5rem; background: rgba(10, 15, 20, 0.95); backdrop-filter: blur(15px); padding: 1.5rem; border-radius: 8px; border: 1px solid rgba(0, 255, 204, 0.3); display: flex; flex-direction: column; gap: 1.2rem; z-index: 10; min-width: 1050px; box-shadow: 0 0 30px rgba(0, 0, 0, 0.8); }
+    .top-controls { display: flex; gap: 2rem; justify-content: center; align-items: flex-end; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 1.2rem; }
+    .bottom-controls { display: flex; gap: 1.2rem; justify-content: center; align-items: center; }
     .control-group { display: flex; flex-direction: column; gap: 0.4rem; }
     label { font-size: 0.65rem; font-weight: 700; color: #00ffcc; text-transform: uppercase; letter-spacing: 1px; }
-    input[type="file"] { font-size: 0.75rem; color: #fff; width: 200px; background: #111; padding: 0.3rem; border: 1px solid #333; border-radius: 4px; }
+    input[type="file"] { font-size: 0.75rem; color: #fff; width: 190px; background: #111; padding: 0.3rem; border: 1px solid #333; border-radius: 4px; }
     select, input[type="range"] { background: #111; color: #fff; border: 1px solid #333; padding: 0.4rem; outline: none; border-radius: 4px; }
+    
     .btn { background: #111; color: #fff; border: 1px solid #333; padding: 0.6rem 1.2rem; font-size: 0.8rem; font-weight: 700; cursor: pointer; transition: 0.2s; text-transform: uppercase; border-radius: 4px; }
     .btn:hover { background: #222; border-color: #00ffcc; }
     .btn:disabled { opacity: 0.5; cursor: not-allowed; }
     .btn.analyze { background: #a855f7; border-color: #a855f7; color: #fff; }
     .btn.play { background: #00ffcc; border-color: #00ffcc; color: #000; }
+    
     .back-btn { position: absolute; top: 1.5rem; left: 2rem; text-decoration: none; color: #fff; font-weight: 700; z-index: 10; transition: 0.3s; opacity: 0.7; }
     #audioVisualizer { width: 150px; height: 40px; background: #000; border: 1px solid #333; border-radius: 4px; }
   </style>
 </head>
 <body>
   <a href="../../index.html" class="back-btn">&lt;- BACK TO LOBBY</a>
+  
   <div id="workspace">
     <div class="panel">
       <div class="panel-label">1. SOURCE PREVIEW</div>
@@ -60,33 +65,45 @@
       </div>
     </div>
   </div>
+  
   <div class="ui-panel">
     <div class="top-controls">
-      <div class="control-group"><label>AI Detection</label><input type="range" id="uiPrecision" min="0.1" max="0.9" step="0.01" value="0.5"></div>
-      <div class="control-group"><label>Glitch Intensity</label><input type="range" id="uiGlitch" min="0.0" max="5.0" step="0.1" value="1.5"></div>
+      <div class="control-group"><label>AI Cutout (누끼)</label>
+        <select id="uiCutout">
+          <option value="1" selected>ON (인물만 추출)</option>
+          <option value="0">OFF (배경 유지)</option>
+        </select>
+      </div>
+      
+      <div class="control-group"><label>Glitch Power</label><input type="range" id="uiGlitch" min="0.0" max="5.0" step="0.1" value="2.0"></div>
+      
       <div class="control-group"><label>React Style</label>
         <select id="uiReactMode">
-          <option value="0" selected>Brightness (명도)</option>
-          <option value="1">Color Shift (톤)</option>
+          <option value="0" selected>Brightness (명도 반응)</option>
+          <option value="1">Color Shift (사이버 톤)</option>
+          <option value="2">1-Bit Dither (극단적 흑백)</option>
+          <option value="3">4-Bit Dither (게임보이 톤)</option>
+          <option value="4">8-Bit Grayscale (레트로 도트)</option>
+          <option value="5">Pixel Break (모자이크 붕괴)</option>
+          <option value="6">Flash Invert (섬광 반전)</option>
+          <option value="7">Audio Zoom Blur (공간 흡수)</option>
         </select>
       </div>
-      <div class="control-group"><label>Ghost Color</label>
-        <select id="uiColorMode">
-          <option value="0">Electric Cyan</option>
-          <option value="1">Deep Crimson</option>
-          <option value="2">Original Texture</option>
-        </select>
-      </div>
+
       <div class="control-group"><label>EQ Signal</label><canvas id="audioVisualizer"></canvas></div>
     </div>
+    
     <div class="bottom-controls">
       <div class="control-group"><label>1. Video Source</label><input type="file" id="visualUpload" accept="video/*" /></div>
       <div class="control-group"><label>2. Audio Sync</label><input type="file" id="audioUpload" accept="audio/*" /></div>
+      
+      <button class="btn" id="btnReset">Reset All</button>
       <button class="btn analyze" id="btnMake" disabled>3. Summon Ghost</button>
       <button class="btn play" id="btnPlay" disabled>Play Result</button>
       <button class="btn" id="btnRecord" disabled>Export .WebM</button>
     </div>
   </div>
+  
   <script type="module" src="./main.js"></script>
 </body>
 </html>
