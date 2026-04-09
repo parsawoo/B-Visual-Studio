@@ -60,14 +60,21 @@ async function initEngine() {
 function syncCameraAspect() {
     if (!renderer) return;
     const v = renderVideo || sourceVideo;
-    const origW = v.videoWidth || 16, origH = v.videoHeight || 9;
-    const aspect = origW / origH;
-    const panel = document.getElementById('renderArea').getBoundingClientRect();
     
+    // 원본 영상의 실제 해상도를 가져옵니다. (없으면 기본 FHD 1920x1080)
+    const origW = v.videoWidth || 1920;
+    const origH = v.videoHeight || 1080;
+    const aspect = origW / origH;
+    
+    // 🌟 핵심 1: 내부 렌더링 화소를 원본 크기(FHD)로 강제 세팅!
+    // 세 번째 파라미터(false)를 넣으면 CSS 스타일(화면 표시 크기)은 건드리지 않습니다.
+    renderer.setSize(origW, origH, false);
+
+    // 🌟 핵심 2: UI 패널에 쏙 들어가게 CSS 크기만 비율에 맞춰 줄여줍니다.
+    const panel = document.getElementById('renderArea').getBoundingClientRect();
     let w = panel.width, h = panel.height;
     if (w / h > aspect) w = h * aspect; else h = w / aspect;
     
-    renderer.setSize(w, h);
     webglCanvas.style.width = Math.floor(w) + 'px';
     webglCanvas.style.height = Math.floor(h) + 'px';
 }
@@ -393,7 +400,13 @@ btnRecord.onclick = () => {
         recSource.connect(recDest); recSource.connect(recCtx.destination); 
         stream.addTrack(recDest.stream.getAudioTracks()[0]);
 
-        mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm; codecs=vp9' });
+        // 🌟 여기가 수정된 부분입니다! (비트레이트 20Mbps 강제 적용)
+        const options = { 
+            mimeType: 'video/webm; codecs=vp9',
+            videoBitsPerSecond: 20000000 
+        };
+        mediaRecorder = new MediaRecorder(stream, options);
+        // 🌟 수정 끝
         mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
         mediaRecorder.onstop = () => {
             isRecording = false;

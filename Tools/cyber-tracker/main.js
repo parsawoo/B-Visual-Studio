@@ -63,7 +63,6 @@ async function initDualAI() {
 }
 initDualAI();
 
-// ─── 🌟 핵심: 셰이더에 고전적인 1-bit Bayer Dithering (uEffect == 9) 추가 ───
 const cyberShader = {
     uniforms: {
         tDiffuse: { value: null }, uTime: { value: 0.0 },
@@ -93,25 +92,20 @@ const cyberShader = {
                 else if(uEffect==4) { 
                     vec2 z=bData.xy+(uv-bData.xy)*clamp(1.0-(uIntensity*0.4),0.1,1.0); color=texture2D(tDiffuse,z); 
                 }
-                else if(uEffect==8) { // 기존 컬러 글리치 디더
+                else if(uEffect==8) { 
                     float lum = dot(color.rgb,vec3(0.299,0.587,0.114)); vec2 scl=gl_FragCoord.xy/clamp(uIntensity*2.0,1.0,4.0);
                     float dth = fract(sin(dot(floor(scl),vec2(12.9898,78.233)))*43758.5453);
                     color.rgb = vec3(step(0.5,lum+(dth*0.5-0.25))) * mix(vec3(1.0),vec3(0.0,1.0,0.6),clamp(uIntensity,0.0,1.0));
                 }
                 else if(uEffect==9) { 
-                    // 🌟 1-bit Classic Mac Ordered Dither (Bayer Matrix)
                     float luma = dot(color.rgb, vec3(0.299, 0.587, 0.114)) * uIntensity;
-                    
                     int cx = int(mod(gl_FragCoord.x, 4.0));
                     int cy = int(mod(gl_FragCoord.y, 4.0));
-                    
                     float m = 0.0;
                     if(cx==0 && cy==0) m=0.0625; else if(cx==1 && cy==0) m=0.5625; else if(cx==2 && cy==0) m=0.1875; else if(cx==3 && cy==0) m=0.6875;
                     else if(cx==0 && cy==1) m=0.8125; else if(cx==1 && cy==1) m=0.3125; else if(cx==2 && cy==1) m=0.9375; else if(cx==3 && cy==1) m=0.4375;
                     else if(cx==0 && cy==2) m=0.2500; else if(cx==1 && cy==2) m=0.7500; else if(cx==2 && cy==2) m=0.1250; else if(cx==3 && cy==2) m=0.6250;
                     else if(cx==0 && cy==3) m=1.0000; else if(cx==1 && cy==3) m=0.5000; else if(cx==2 && cy==3) m=0.8750; else if(cx==3 && cy==3) m=0.3750;
-                    
-                    // 완전한 흑(0)과 백(1)으로만 출력
                     color.rgb = vec3(step(m, luma));
                 }
             }
@@ -130,6 +124,33 @@ function initGL() {
 }
 initGL();
 
+function syncCameraAspect() {
+    if (!renderer || !videoElement) return;
+
+    // 원본 화소 고정
+    const origW = videoElement.videoWidth || 1920;
+    const origH = videoElement.videoHeight || 1080;
+    const aspect = origW / origH;
+
+    const panelBox = document.getElementById('renderArea').getBoundingClientRect();
+    let uiW = panelBox.width; 
+    let uiH = panelBox.height;
+    if (uiW / uiH > aspect) uiW = uiH * aspect; else uiH = uiW / aspect;
+    uiW = Math.floor(uiW); uiH = Math.floor(uiH);
+
+    renderer.setSize(origW, origH, false);
+    webglCanvas.style.width = uiW + 'px'; 
+    webglCanvas.style.height = uiH + 'px';
+
+    hudCanvas.width = origW; 
+    hudCanvas.height = origH;
+    hudCanvas.style.width = uiW + 'px'; 
+    hudCanvas.style.height = uiH + 'px';
+    
+    mergeCanvas.width = origW; 
+    mergeCanvas.height = origH;
+}
+
 if(imageUpload) {
     imageUpload.onchange = (e) => {
         const file = e.target.files[0];
@@ -143,19 +164,7 @@ if(imageUpload) {
             sourceTex.magFilter = THREE.LinearFilter;
             material.uniforms.tDiffuse.value = sourceTex;
 
-            const aspect = videoElement.videoWidth / videoElement.videoHeight;
-            const panelBox = document.getElementById('renderArea').getBoundingClientRect();
-            
-            let w = panelBox.width; let h = panelBox.height;
-            if(w/h > aspect) w = h * aspect; else h = w / aspect;
-            w = Math.floor(w); h = Math.floor(h);
-
-            renderer.setSize(w, h);
-            webglCanvas.style.width = w + 'px'; webglCanvas.style.height = h + 'px';
-            hudCanvas.width = w; hudCanvas.height = h;
-            hudCanvas.style.width = w + 'px'; hudCanvas.style.height = h + 'px';
-            mergeCanvas.width = w; mergeCanvas.height = h;
-            
+            syncCameraAspect();
             resetSystem();
             if(btnAnalyze) btnAnalyze.disabled = false;
             if(statusText) statusText.innerHTML = "옵션을 설정한 뒤<br>[1. Analyze Track]을 누르세요.";
@@ -273,28 +282,7 @@ if(btnPlay) {
     };
 }
 
-if(btnRecord) {
-    btnRecord.onclick = () => {
-        if (trackingData.length === 0) return alert("분석(Analyze) 완료 후 녹화할 수 있습니다.");
-        if (isRecording) {
-            mediaRecorder.stop(); isRecording = false;
-            btnRecord.classList.remove('recording'); btnRecord.innerText = "Export .WebM";
-        } else {
-            recordedChunks = []; videoElement.currentTime = 0;
-            if (!isPlaying && btnPlay) btnPlay.click();
-            const stream = mergeCanvas.captureStream(30);
-            mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
-            mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
-            mediaRecorder.onstop = () => {
-                const blob = new Blob(recordedChunks, { type: 'video/webm' }); const url = URL.createObjectURL(blob);
-                const a = document.createElement('a'); a.href = url; a.download = 'CyberTracker_Export.webm'; a.click(); URL.revokeObjectURL(url);
-            };
-            mediaRecorder.start(); isRecording = true;
-            btnRecord.classList.add('recording'); btnRecord.innerText = "Recording...";
-        }
-    };
-}
-
+// ─── 🌟 HUD 렌더링: 두꺼워졌던 라인/글씨를 다시 얇고 예리하게 롤백 ───
 function drawHUD() {
     hudCtx.clearRect(0,0,hudCanvas.width,hudCanvas.height);
     for(let i=0; i<TOTAL_BOXES; i++) material.uniforms.uBoxes.value[i].set(0,0,0,0);
@@ -333,8 +321,12 @@ function drawHUD() {
     const lineStyle = uiLineStyle ? uiLineStyle.value : 'curved';
     const lineDens = uiLineDensity ? parseFloat(uiLineDensity.value) : 0.3;
 
-    hudCtx.strokeStyle = color; hudCtx.lineWidth = 1.0; hudCtx.font = "9px 'Space Mono', monospace";
-    hudCtx.shadowBlur = boxStyle === 'glow' ? 15 : 0; hudCtx.shadowColor = color;
+    // 🌟 오리지널의 날렵한 수치로 강제 고정 (과도한 비례 스케일링 제거)
+    hudCtx.strokeStyle = color; 
+    hudCtx.lineWidth = 1.2; 
+    hudCtx.font = `12px 'Space Mono', monospace`;
+    hudCtx.shadowBlur = boxStyle === 'glow' ? 15 : 0; 
+    hudCtx.shadowColor = color;
 
     let activeCenters = [];
 
@@ -353,12 +345,19 @@ function drawHUD() {
             hudCtx.lineTo(cx + cw - len, cy); 
             hudCtx.moveTo(cx, cy + ch - len); hudCtx.lineTo(cx, cy + ch); hudCtx.lineTo(cx + len, cy + ch);
             hudCtx.moveTo(cx + cw, cy + ch - len); hudCtx.lineTo(cx + cw, cy + ch); hudCtx.lineTo(cx + cw - len, cy + ch);
-            hudCtx.stroke(); hudCtx.fillStyle = color; hudCtx.fillText(`[${rb.class.toUpperCase()}]`, cx, cy - 5);
+            hudCtx.stroke(); 
+            hudCtx.fillStyle = color; 
+            hudCtx.fillText(`[${rb.class.toUpperCase()}]`, cx, cy - 8);
         } else if (boxStyle === 'label') {
-            hudCtx.strokeRect(cx, cy, cw, ch); hudCtx.fillStyle = color; hudCtx.fillRect(cx, cy - 14, Math.max(cw, 50), 14);
-            hudCtx.fillStyle = '#000'; hudCtx.fillText(`${rb.class.toUpperCase()}`, cx + 2, cy - 3);
+            hudCtx.strokeRect(cx, cy, cw, ch); 
+            hudCtx.fillStyle = color; 
+            hudCtx.fillRect(cx, cy - 18, Math.max(cw, 60), 18);
+            hudCtx.fillStyle = '#000'; 
+            hudCtx.fillText(`${rb.class.toUpperCase()}`, cx + 4, cy - 5);
         } else {
-            hudCtx.strokeRect(cx, cy, cw, ch); hudCtx.fillStyle = color; hudCtx.fillText(`${rb.class.toUpperCase()}`, cx, cy - 5);
+            hudCtx.strokeRect(cx, cy, cw, ch); 
+            hudCtx.fillStyle = color; 
+            hudCtx.fillText(`${rb.class.toUpperCase()}`, cx, cy - 8);
         }
         material.uniforms.uBoxes.value[i].set(rb.x, 1.0 - (rb.y + rb.h), rb.w, rb.h);
     });
@@ -366,7 +365,8 @@ function drawHUD() {
     hudCtx.globalAlpha = 0.4; hudCtx.shadowBlur = 0; 
     const connectDist = hudCanvas.width * lineDens;
 
-    if (lineStyle === 'dashed') hudCtx.setLineDash([3, 5]);
+    // 🌟 점선 간격도 얇고 촘촘하게 롤백
+    if (lineStyle === 'dashed') hudCtx.setLineDash([4, 6]);
     else hudCtx.setLineDash([]);
 
     hudCtx.beginPath();
@@ -397,7 +397,7 @@ function animate(time) {
     }
 
     const currentInt = uiIntensity ? (parseFloat(uiIntensity.value) || 1.0) : 1.0;
-    const currentEff = uiEffect ? (parseInt(uiEffect.value) || 0) : 9; // 기본값을 B&W 디더(9)로
+    const currentEff = uiEffect ? (parseInt(uiEffect.value) || 0) : 9;
 
     material.uniforms.uTime.value = time * 0.001;
     material.uniforms.uEffect.value = currentEff;
@@ -408,6 +408,38 @@ function animate(time) {
 
     if (isRecording) {
         mergeCtx.clearRect(0, 0, mergeCanvas.width, mergeCanvas.height);
-        mergeCtx.drawImage(webglCanvas, 0, 0); mergeCtx.drawImage(hudCanvas, 0, 0);
+        mergeCtx.drawImage(webglCanvas, 0, 0, mergeCanvas.width, mergeCanvas.height); 
+        mergeCtx.drawImage(hudCanvas, 0, 0, mergeCanvas.width, mergeCanvas.height);
     }
+}
+
+if(btnRecord) {
+    btnRecord.onclick = () => {
+        if (trackingData.length === 0) return alert("분석(Analyze) 완료 후 녹화할 수 있습니다.");
+        if (isRecording) {
+            mediaRecorder.stop(); isRecording = false;
+            btnRecord.classList.remove('recording'); btnRecord.innerText = "Export .WebM";
+        } else {
+            recordedChunks = []; videoElement.currentTime = 0;
+            if (!isPlaying && btnPlay) btnPlay.click();
+            
+            const stream = mergeCanvas.captureStream(30);
+            
+            // 🌟 비트레이트 20Mbps 패치
+            const options = { 
+                mimeType: 'video/webm; codecs=vp9',
+                videoBitsPerSecond: 20000000 
+            };
+            mediaRecorder = new MediaRecorder(stream, options);
+            
+            mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
+            mediaRecorder.onstop = () => {
+                const blob = new Blob(recordedChunks, { type: 'video/webm' }); const url = URL.createObjectURL(blob);
+                const a = document.createElement('a'); a.href = url; a.download = 'CyberTracker_Export.webm'; a.click(); URL.revokeObjectURL(url);
+            };
+            
+            mediaRecorder.start(); isRecording = true;
+            btnRecord.classList.add('recording'); btnRecord.innerText = "Recording...";
+        }
+    };
 }

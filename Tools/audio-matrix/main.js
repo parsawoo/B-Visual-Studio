@@ -21,7 +21,6 @@ const uiSensitivity = document.getElementById('uiSensitivity');
 const uiDispersion = document.getElementById('uiDispersion');
 const uiPointSize = document.getElementById('uiPointSize');
 const uiColorMode = document.getElementById('uiColorMode');
-// 🌟 명도 vs 톤 반응 선택 UI 연동
 const uiReactMode = document.getElementById('uiReactMode');
 
 const visCanvas = document.getElementById('audioVisualizer');
@@ -47,7 +46,7 @@ let isRecording = false;
 let visualFileUrl = null;
 let rawAudioFile = null;
 
-// ─── 비율 유지(Aspect Ratio) 함수 ───
+// ─── 🌟 1. 해상도 패치: 비율 유지 및 원본 화소 고정 함수 ───
 function syncCameraAspect() {
     if (!camera || !renderer) return;
 
@@ -82,7 +81,9 @@ function syncCameraAspect() {
     w = Math.floor(w);
     h = Math.floor(h);
 
-    renderer.setSize(w, h);
+    // 🌟 핵심: 내부 렌더링 해상도를 원본 소스 크기(origW, origH)로 강제 고정
+    renderer.setSize(origW, origH, false);
+    // UI 상의 캔버스 껍데기 크기만 CSS로 조절
     webglCanvas.style.width = w + 'px';
     webglCanvas.style.height = h + 'px';
 
@@ -279,7 +280,7 @@ function buildParticleSystem(origW, origH) {
             uDispersion: { value: 2.0 },
             uPointSize: { value: 3.0 },
             uColorMode: { value: 0 },
-            uReactMode: { value: 0 } // 🌟 명도/톤 반응 전환용 Uniform
+            uReactMode: { value: 0 } 
         },
         vertexShader: `
             varying vec3 vColor;
@@ -303,14 +304,11 @@ function buildParticleSystem(origW, origH) {
                 float mid = uAudio.y;
                 float treble = uAudio.z;
 
-                // X, Y축 형태 완전 보존 (난수 분산 삭제)
-                // Z축으로 부드러운 펌핑 적용
                 float zForce = lum * bass * uDispersion * 2.5;
                 float n = rand(uv + uTime * 0.1);
 
                 pos.z += zForce * (n * 0.4 + 0.6);
 
-                // 오디오에 맞춰 픽셀 크기도 미세하게 펌핑
                 gl_PointSize = uPointSize + (mid * uSensitivity * 3.0 * lum);
                 gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
             }
@@ -332,7 +330,6 @@ function buildParticleSystem(origW, origH) {
                 float mid = uAudio.y;
                 float treble = uAudio.z;
 
-                // 1. 기본 컬러 베이스 설정
                 if (uColorMode == 1) {
                     baseColor = mix(vec3(0.0, 0.1, 0.05), vec3(0.1, 1.0, 0.5), lum * 1.5);
                 } else if (uColorMode == 2) {
@@ -343,23 +340,15 @@ function buildParticleSystem(origW, origH) {
 
                 vec3 finalColor = baseColor;
 
-                // 2. 🌟 유저가 선택한 반응 스타일에 따른 처리
                 if (uReactMode == 0) {
-                    // [옵션 1] Brightness (명도 펌핑)
                     float audioEnergy = (bass * 0.6) + (mid * 0.3) + (treble * 0.1);
                     float brightness = 0.8 + (audioEnergy * 1.8);
-                    
-                    // 화이트아웃 / 완전 블랙 방지 클램핑
                     brightness = clamp(brightness, 0.4, 2.2);
                     finalColor *= brightness;
-                    
-                    // 타격감(Treble) 시 미세한 흰색 섬광
                     finalColor += vec3(treble * 0.25);
                     finalColor = clamp(finalColor, 0.05, 0.95);
                 } else {
-                    // [옵션 2] Color Shift (톤/색상 변환)
                     if (uColorMode == 0) {
-                        // 원본 색상 모드일 땐 틴트 혼합
                         vec3 audioTint = vec3(bass * 0.8, mid * 0.5 + treble * 0.2, bass * 0.2 + mid * 0.8 + treble * 0.5);
                         finalColor = mix(baseColor, baseColor + audioTint, clamp(bass + mid, 0.0, 1.0));
                     } else if (uColorMode == 1) {
@@ -372,7 +361,6 @@ function buildParticleSystem(origW, origH) {
                     finalColor = clamp(finalColor, 0.0, 1.0);
                 }
 
-                // 어두운 영역은 살짝 투명하게 처리하여 입체감 부여
                 gl_FragColor = vec4(finalColor, lum + 0.3 + (bass * 0.1));
             }
         `,
@@ -387,7 +375,8 @@ function buildParticleSystem(origW, origH) {
 
 function initGL() {
     renderer = new THREE.WebGLRenderer({ canvas: webglCanvas, antialias: true, alpha: true, preserveDrawingBuffer: true });
-    renderer.setPixelRatio(window.devicePixelRatio);
+    // 레티나 디스플레이 등에서 해상도가 뻥튀기되는 현상 방지
+    renderer.setPixelRatio(1); 
 
     const panelBox = document.getElementById('renderArea').getBoundingClientRect();
     renderer.setSize(panelBox.width, panelBox.height);
@@ -452,8 +441,6 @@ function animate(time) {
         material.uniforms.uDispersion.value = parseFloat(uiDispersion.value);
         material.uniforms.uPointSize.value = parseFloat(uiPointSize.value);
         material.uniforms.uColorMode.value = parseInt(uiColorMode.value);
-        
-        // 🌟 실시간 렌더러에 유저가 고른 반응 모드(명도 vs 톤) 즉각 반영
         material.uniforms.uReactMode.value = parseInt(uiReactMode.value);
 
         material.uniforms.uAudio.value.x += (avgBass - material.uniforms.uAudio.value.x) * 0.2;
@@ -493,7 +480,13 @@ btnRecord.onclick = () => {
 
         stream.addTrack(recDest.stream.getAudioTracks()[0]);
 
-        mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm; codecs=vp9' });
+        // 🌟 2. 비트레이트 패치: 20Mbps 강제 할당
+        const options = { 
+            mimeType: 'video/webm; codecs=vp9',
+            videoBitsPerSecond: 20000000 
+        };
+        mediaRecorder = new MediaRecorder(stream, options);
+        
         mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
         mediaRecorder.onstop = () => {
             isRecording = false;

@@ -29,6 +29,9 @@ let analysisCtx = null;
 let imageDataCache = null;
 let isSwirling = false;
 
+// 🌟 해상도 저장을 위한 글로벌 변수
+let srcW = 1024, srcH = 1024;
+
 // Agents configuration
 const MAX_AGENTS  = 40000;
 const SPAWN_CLICK = 1000; 
@@ -147,6 +150,7 @@ function init() {
   scene  = new THREE.Scene();
   camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
   
+  // 🌟 초기 FBO 셋팅. 나중에 소스 해상도에 맞춰 동적으로 리사이징됩니다.
   trailFBO_A = makeFBO(1024, 1024);
   trailFBO_B = makeFBO(1024, 1024);
   
@@ -182,7 +186,6 @@ function setupImage(url) {
   img.src = url;
 }
 
-// 🌟 핵심 픽스: 비디오 렌더링을 100% 보장하는 안전장치
 function setupVideo(url) {
   isVideo = true;
   if(videoElement) { videoElement.pause(); }
@@ -206,14 +209,28 @@ function setupVideo(url) {
   });
 }
 
+// ─── 🌟 1. 해상도 및 FBO 1:1 매칭 패치 ───
 function adjustCanvasSize(sw, sh) {
+  srcW = sw; 
+  srcH = sh;
   const aspect = sw / sh;
-  const maxWidth = window.innerWidth * 0.8;
-  const maxHeight = window.innerHeight * 0.7;
+  
+  const container = document.getElementById('canvas-container');
+  const maxWidth = container.clientWidth * 0.95;
+  const maxHeight = container.clientHeight * 0.95;
+  
   let w = maxWidth;
-  let h = maxWidth / aspect;
-  if(h > maxHeight) { h = maxHeight; w = maxHeight * aspect; }
-  renderer.setSize(w, h);
+  let h = w / aspect;
+  if(h > maxHeight) { h = maxHeight; w = h * aspect; }
+  
+  // 렌더링 픽셀은 소스 해상도(sw, sh)로 강제 고정
+  renderer.setSize(sw, sh, false);
+  canvas.style.width = Math.floor(w) + 'px';
+  canvas.style.height = Math.floor(h) + 'px';
+
+  // 🌟 핵심: Trail 버퍼(FBO)도 1024가 아닌 원본 소스 해상도로 사이즈업
+  trailFBO_A.setSize(sw, sh);
+  trailFBO_B.setSize(sw, sh);
 }
 
 function resetSimulation() {
@@ -295,7 +312,8 @@ function drawToTrail() {
     uniforms: { 
       tTrail: { value: trailFBO_A.texture }, 
       uDecay: { value: decay },
-      uRes:   { value: new THREE.Vector2(1024, 1024) }
+      // 🌟 원본 해상도(srcW, srcH)를 셰이더에 주입하여 픽셀 뭉개짐 방지
+      uRes:   { value: new THREE.Vector2(srcW, srcH) }
     },
     vertexShader: basicVert, fragmentShader: trailProcessFrag
   });
@@ -360,7 +378,7 @@ function animate() {
 
 init();
 
-// ─── Button Events ───────────────────────────────────────────────────────────
+// ─── Button Events & 20Mbps 녹화 ─────────────────────────────────────────────
 if(btnReset) btnReset.onclick = resetSimulation;
 if(btnSwirl) btnSwirl.onclick = () => {
   isSwirling = !isSwirling;
@@ -373,4 +391,45 @@ if(btnSaveImg) btnSaveImg.onclick = () => {
   link.href = canvas.toDataURL('image/png');
   link.click();
 };
-if(btnRecord) btnRecord.onclick = () => { alert('비디오 녹화 기능은 브라우저 API 설정이 필요합니다.'); };
+
+let mediaRecorder;
+let recordedChunks = [];
+let isRecording = false;
+
+if(btnRecord) {
+  btnRecord.onclick = () => {
+    if (!sourceTex) return alert("먼저 이미지나 비디오를 업로드하세요.");
+
+    if (isRecording) {
+        mediaRecorder.stop(); 
+        isRecording = false;
+        btnRecord.classList.remove('active'); 
+        btnRecord.innerText = "Record Video";
+    } else {
+        recordedChunks = [];
+        if (isVideo && videoElement) videoElement.currentTime = 0;
+        
+        const stream = canvas.captureStream(30);
+        
+        // 🌟 2. 비트레이트 패치: 20Mbps 초고화질 강제 할당
+        const options = { 
+            mimeType: 'video/webm; codecs=vp9',
+            videoBitsPerSecond: 20000000 
+        };
+        mediaRecorder = new MediaRecorder(stream, options);
+        
+        mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
+        mediaRecorder.onstop = () => {
+            const blob = new Blob(recordedChunks, { type: 'video/webm' }); 
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a'); a.href = url; a.download = 'ReactionDiffusion_Export.webm'; a.click(); 
+            URL.revokeObjectURL(url);
+        };
+        
+        mediaRecorder.start(); 
+        isRecording = true;
+        btnRecord.classList.add('active'); 
+        btnRecord.innerText = "Recording...";
+    }
+  };
+}
